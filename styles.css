@@ -1,9 +1,17 @@
-/*
+/* 블로그 동기화 플러그인 스타일 */
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+/* 상태바 스타일 */
+.blog-sync-status {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 0 8px;
+}
 
-If your plugin does not need CSS, delete this file.
+.blog-sync-icon {
+	font-size: 14px;
+	line-height: 1;
+}
 
 .blog-sync-text {
 	font-size: 12px;
@@ -62,6 +70,7 @@ If your plugin does not need CSS, delete this file.
 .workspace-ribbon-collapse-btn[aria-label*="블로그에 동기화"]:hover {
 	color: var(--text-accent);
 }
+<<<<<<< HEAD
 
 /* 연결 테스트 모달 스타일 */
 .test-section {
@@ -118,3 +127,5 @@ If your plugin does not need CSS, delete this file.
 	margin: 4px 0;
 	line-height: 1.5;
 }
+=======
+>>>>>>> feature/UI
