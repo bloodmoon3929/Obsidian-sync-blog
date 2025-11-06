@@ -1,7 +1,7 @@
 {
-	"name": "obsidian-sample-plugin",
-	"version": "1.0.0",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"name": "obsidian-blog-sync",
+	"version": "0.1.0",
+	"description": "Sync Obsidian notes to blog with Git and SFTP support",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
@@ -11,8 +11,13 @@
 	"keywords": [],
 	"author": "",
 	"license": "MIT",
+	"dependencies": {
+		"simple-git": "^3.25.0",
+		"ssh2-sftp-client": "^10.0.3"
+	},
 	"devDependencies": {
 		"@types/node": "^16.11.6",
+		"@types/ssh2-sftp-client": "^9.0.3",
 		"@typescript-eslint/eslint-plugin": "5.29.0",
 		"@typescript-eslint/parser": "5.29.0",
 		"builtin-modules": "3.3.0",

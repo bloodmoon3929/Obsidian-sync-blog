@@ -1,8 +1,72 @@
-/*
+/* 블로그 동기화 플러그인 스타일 */
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+/* 상태바 스타일 */
+.blog-sync-status {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 0 8px;
+}
 
-If your plugin does not need CSS, delete this file.
+.blog-sync-icon {
+	font-size: 14px;
+	line-height: 1;
+}
 
-*/
+.blog-sync-text {
+	font-size: 12px;
+}
+
+/* 상태별 색상 */
+.status-idle .blog-sync-text {
+	color: var(--text-muted);
+}
+
+.status-syncing .blog-sync-icon {
+	animation: rotate 1s linear infinite;
+}
+
+.status-syncing .blog-sync-text {
+	color: var(--text-accent);
+}
+
+.status-success .blog-sync-text {
+	color: var(--color-green);
+}
+
+.status-error .blog-sync-text {
+	color: var(--color-red);
+}
+
+/* 회전 애니메이션 */
+@keyframes rotate {
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+/* 설정 탭 스타일 */
+.blog-sync-settings h2 {
+	margin-top: 30px;
+	margin-bottom: 15px;
+	padding-bottom: 8px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	color: var(--text-normal);
+	font-size: 1.2em;
+	font-weight: 600;
+}
+
+.blog-sync-settings h1 {
+	margin-bottom: 20px;
+	color: var(--text-normal);
+	font-size: 1.5em;
+	font-weight: 700;
+}
+
+/* 리본 아이콘 호버 효과 */
+.workspace-ribbon-collapse-btn[aria-label*="블로그에 동기화"]:hover {
+	color: var(--text-accent);
+}
