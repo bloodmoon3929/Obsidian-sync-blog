@@ -70,7 +70,6 @@
 .workspace-ribbon-collapse-btn[aria-label*="블로그에 동기화"]:hover {
 	color: var(--text-accent);
 }
-<<<<<<< HEAD
 
 /* 연결 테스트 모달 스타일 */
 .test-section {
@@ -127,5 +126,3 @@
 	margin: 4px 0;
 	line-height: 1.5;
 }
-=======
->>>>>>> feature/UI
