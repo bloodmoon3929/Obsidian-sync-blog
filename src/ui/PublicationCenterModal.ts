@@ -1,13 +1,8 @@
 // src/ui/PublicationCenterModal.ts
-<<<<<<< HEAD
-import { App, Modal, TFile, Notice } from 'obsidian';
-import BlogSyncPlugin from '../../main';
-=======
 
-import { App, Modal, TFile, Notice } from 'obsidian';
+import { App, Modal, TFile, Notice, TFolder } from 'obsidian';
 import BlogSyncPlugin from '../../main';
 import { GitHubPublisher } from '../publisher/GitHubPublisher';
->>>>>>> feature/upload
 
 interface NoteStatus {
     file: TFile;
@@ -16,32 +11,45 @@ interface NoteStatus {
     hash?: string;
 }
 
+interface FolderNode {
+    name: string;
+    path: string;
+    notes: NoteStatus[];
+    subfolders: Map<string, FolderNode>;
+    parent?: FolderNode;
+}
+
 export class PublicationCenterModal extends Modal {
     plugin: BlogSyncPlugin;
     notes: NoteStatus[] = [];
     selectedNotes: Set<string> = new Set();
-<<<<<<< HEAD
-=======
     private publisher: GitHubPublisher | null = null;
->>>>>>> feature/upload
+    private progressBar: HTMLElement | null = null;
+    private progressText: HTMLElement | null = null;
+    private folderTree: FolderNode;
 
     constructor(app: App, plugin: BlogSyncPlugin) {
         super(app);
         this.plugin = plugin;
-<<<<<<< HEAD
-=======
         
-        // Publisher 초기화
+        // 루트 폴더 노드 초기화
+        this.folderTree = {
+            name: 'Root',
+            path: '',
+            notes: [],
+            subfolders: new Map()
+        };
+        
         if (this.plugin.settings.publishTarget === 'github') {
             this.publisher = new GitHubPublisher(this.plugin, {
                 githubToken: this.plugin.settings.githubToken,
                 githubUsername: this.plugin.settings.githubUsername,
                 githubRepo: this.plugin.settings.githubRepo,
                 githubBranch: this.plugin.settings.githubBranch,
-                blogContentPath: this.plugin.settings.blogContentPath
+                blogContentPath: this.plugin.settings.blogContentPath,
+                blogAssetsPath: this.plugin.settings.blogAssetsPath
             });
         }
->>>>>>> feature/upload
     }
 
     async onOpen() {
@@ -49,26 +57,15 @@ export class PublicationCenterModal extends Modal {
         contentEl.empty();
         contentEl.addClass('publication-center-modal');
 
-<<<<<<< HEAD
-=======
-        // 발행 설정 확인
         if (!this.validateSettings()) {
             this.showSettingsError(contentEl);
             return;
         }
 
->>>>>>> feature/upload
-        // 모달 래퍼 생성 (flex 컨테이너)
         const modalWrapper = contentEl.createDiv({ cls: 'publication-center-wrapper' });
 
         // 헤더
         const header = modalWrapper.createDiv({ cls: 'publication-center-header' });
-<<<<<<< HEAD
-        header.createEl('h2', { 
-            text: '📚 Publication Center',
-            cls: 'publication-center-title' 
-        });
-=======
         const headerContent = header.createDiv({ cls: 'publication-header-content' });
         
         headerContent.createEl('h2', { 
@@ -76,35 +73,48 @@ export class PublicationCenterModal extends Modal {
             cls: 'publication-center-title' 
         });
         
-        // 발행 대상 표시
         const targetBadge = headerContent.createDiv({ cls: 'publication-target-badge' });
         if (this.plugin.settings.publishTarget === 'github') {
             targetBadge.innerHTML = `🐙 GitHub: ${this.plugin.settings.githubUsername}/${this.plugin.settings.githubRepo}`;
         } else {
             targetBadge.innerHTML = `🖥️ Server: ${this.plugin.settings.serverHost}`;
         }
->>>>>>> feature/upload
+
+        // 진행 상태바
+        const progressContainer = modalWrapper.createDiv({ cls: 'publication-progress-container hidden' });
+        this.progressBar = progressContainer.createDiv({ cls: 'publication-progress-bar' });
+        this.progressText = progressContainer.createDiv({ cls: 'publication-progress-text' });
 
         // 노트 상태 분석
         await this.analyzeNotes();
+        this.buildFolderTree();
 
-        // 컨텐츠 영역 (스크롤 가능)
+        // 컨텐츠 영역
         const content = modalWrapper.createDiv({ cls: 'publication-center-content' });
 
-        // 각 카테고리 섹션
-        this.createSection(content, 'Unpublished Notes', 'unpublished', '📝');
-        this.createSection(content, 'Changed Notes', 'changed', '✏️');
-        this.createSection(content, 'Deleted Notes', 'deleted', '🗑️');
-        this.createSection(content, 'Published Notes', 'published', '✅');
+        this.createSectionByStatus(content, 'Unpublished Notes', 'unpublished', '📝');
+        this.createSectionByStatus(content, 'Changed Notes', 'changed', '✏️');
+        this.createSectionByStatus(content, 'Deleted Notes', 'deleted', '🗑️');
+        this.createSectionByStatus(content, 'Published Notes', 'published', '✅');
 
-        // 푸터 (버튼 영역) - 고정
+        // 푸터
         const footer = modalWrapper.createDiv({ cls: 'publication-center-footer' });
         
-        // 선택된 노트 수 표시
         const selectedCount = footer.createDiv({ cls: 'publication-center-selected-count' });
         this.updateSelectedCount(selectedCount);
         
-        const publishBtn = footer.createEl('button', {
+        const buttonContainer = footer.createDiv({ cls: 'publication-button-container' });
+        
+        const unpublishBtn = buttonContainer.createEl('button', {
+            text: 'UNPUBLISH SELECTED',
+            cls: 'publication-center-unpublish-btn'
+        });
+        
+        unpublishBtn.addEventListener('click', async () => {
+            await this.unpublishSelected();
+        });
+        
+        const publishBtn = buttonContainer.createEl('button', {
             text: 'PUBLISH SELECTED',
             cls: 'mod-cta publication-center-publish-btn'
         });
@@ -115,10 +125,324 @@ export class PublicationCenterModal extends Modal {
     }
 
     /**
-<<<<<<< HEAD
-=======
-     * 설정 검증
+     * 폴더 트리 구조 생성
      */
+    private buildFolderTree() {
+        this.folderTree = {
+            name: 'Root',
+            path: '',
+            notes: [],
+            subfolders: new Map()
+        };
+
+        for (const note of this.notes) {
+            const pathParts = note.file.path.split('/');
+            const fileName = pathParts.pop()!;
+            
+            let currentNode = this.folderTree;
+            let currentPath = '';
+
+            // 폴더 경로를 따라 노드 생성
+            for (const part of pathParts) {
+                currentPath = currentPath ? `${currentPath}/${part}` : part;
+                
+                if (!currentNode.subfolders.has(part)) {
+                    const newNode: FolderNode = {
+                        name: part,
+                        path: currentPath,
+                        notes: [],
+                        subfolders: new Map(),
+                        parent: currentNode
+                    };
+                    currentNode.subfolders.set(part, newNode);
+                }
+                
+                currentNode = currentNode.subfolders.get(part)!;
+            }
+
+            // 노트를 최종 폴더에 추가
+            currentNode.notes.push(note);
+        }
+    }
+
+    /**
+     * 상태별 섹션 생성 (폴더 구조 포함)
+     */
+    createSectionByStatus(container: HTMLElement, title: string, status: string, icon: string) {
+        const notesInStatus = this.notes.filter(n => n.status === status);
+        
+        const section = container.createDiv({ cls: 'publication-section' });
+        
+        const sectionHeader = section.createDiv({ cls: 'publication-section-header' });
+        const headerContent = sectionHeader.createDiv({ cls: 'publication-section-header-content' });
+        
+        const toggleIcon = headerContent.createSpan({ cls: 'publication-section-toggle' });
+        toggleIcon.innerHTML = '▶';
+        
+        headerContent.createSpan({ 
+            text: `${icon} ${title}`,
+            cls: 'publication-section-title' 
+        });
+        
+        const badge = headerContent.createSpan({ 
+            text: `${notesInStatus.length}`,
+            cls: 'publication-section-badge' 
+        });
+        
+        if (notesInStatus.length > 0) {
+            const selectAllBtn = headerContent.createEl('button', {
+                text: 'Select All',
+                cls: 'publication-select-all-btn'
+            });
+            
+            selectAllBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.selectAllInSection(notesInStatus);
+            });
+        }
+        
+        const sectionContent = section.createDiv({ cls: 'publication-section-content collapsed' });
+        
+        if (notesInStatus.length === 0) {
+            sectionContent.createDiv({ 
+                text: 'No notes',
+                cls: 'publication-empty-state' 
+            });
+        } else {
+            // 폴더별로 그룹화해서 표시
+            this.renderFolderTree(sectionContent, this.folderTree, status);
+        }
+        
+        sectionHeader.addEventListener('click', () => {
+            const isCollapsed = sectionContent.hasClass('collapsed');
+            if (isCollapsed) {
+                sectionContent.removeClass('collapsed');
+                toggleIcon.innerHTML = '▼';
+            } else {
+                sectionContent.addClass('collapsed');
+                toggleIcon.innerHTML = '▶';
+            }
+        });
+    }
+
+    /**
+     * 폴더 트리 렌더링 (재귀적)
+     */
+    private renderFolderTree(container: HTMLElement, node: FolderNode, filterStatus?: string, depth: number = 0) {
+        // 현재 폴더의 노트 필터링
+        const notesInFolder = filterStatus 
+            ? node.notes.filter(n => n.status === filterStatus)
+            : node.notes;
+
+        // 서브폴더에서 필터링된 노트 수 계산
+        let subfoldersWithNotes = 0;
+        for (const [_, subfolder] of node.subfolders) {
+            const subNotes = this.countNotesInFolder(subfolder, filterStatus);
+            if (subNotes > 0) subfoldersWithNotes++;
+        }
+
+        // 현재 폴더에 표시할 노트가 있거나, 서브폴더에 노트가 있으면 표시
+        if (notesInFolder.length > 0 || subfoldersWithNotes > 0) {
+            // 루트가 아닌 경우 폴더 아이템 생성
+            if (depth > 0) {
+                const totalNotesInFolder = this.countNotesInFolder(node, filterStatus);
+                const folderItem = container.createDiv({ 
+                    cls: 'publication-folder-item',
+                    attr: { style: `padding-left: ${depth * 20}px` }
+                });
+                
+                const folderHeader = folderItem.createDiv({ cls: 'publication-folder-header' });
+                
+                const toggleIcon = folderHeader.createSpan({ cls: 'publication-folder-toggle' });
+                toggleIcon.innerHTML = '📁 ▶';
+                
+                const folderName = folderHeader.createSpan({ 
+                    text: node.name,
+                    cls: 'publication-folder-name' 
+                });
+                
+                const folderBadge = folderHeader.createSpan({ 
+                    text: `${totalNotesInFolder}`,
+                    cls: 'publication-folder-badge' 
+                });
+
+                // 폴더 내 모든 노트 선택 버튼
+                const selectFolderBtn = folderHeader.createEl('button', {
+                    text: 'Select Folder',
+                    cls: 'publication-select-folder-btn'
+                });
+                
+                selectFolderBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.selectAllInFolder(node, filterStatus);
+                });
+
+                const folderContent = container.createDiv({ 
+                    cls: 'publication-folder-content collapsed' 
+                });
+
+                // 폴더 토글
+                folderHeader.addEventListener('click', () => {
+                    const isCollapsed = folderContent.hasClass('collapsed');
+                    if (isCollapsed) {
+                        folderContent.removeClass('collapsed');
+                        toggleIcon.innerHTML = '📂 ▼';
+                    } else {
+                        folderContent.addClass('collapsed');
+                        toggleIcon.innerHTML = '📁 ▶';
+                    }
+                });
+
+                // 현재 폴더의 노트들
+                notesInFolder.forEach(note => {
+                    this.createNoteItem(folderContent, note, depth + 1);
+                });
+
+                // 서브폴더들 (재귀)
+                for (const [_, subfolder] of node.subfolders) {
+                    this.renderFolderTree(folderContent, subfolder, filterStatus, depth + 1);
+                }
+            } else {
+                // 루트 레벨
+                // 루트의 노트들
+                notesInFolder.forEach(note => {
+                    this.createNoteItem(container, note, depth);
+                });
+
+                // 서브폴더들
+                for (const [_, subfolder] of node.subfolders) {
+                    this.renderFolderTree(container, subfolder, filterStatus, depth + 1);
+                }
+            }
+        }
+    }
+
+    /**
+     * 폴더 내 노트 개수 세기 (재귀적)
+     */
+    private countNotesInFolder(node: FolderNode, filterStatus?: string): number {
+        let count = filterStatus 
+            ? node.notes.filter(n => n.status === filterStatus).length
+            : node.notes.length;
+
+        for (const [_, subfolder] of node.subfolders) {
+            count += this.countNotesInFolder(subfolder, filterStatus);
+        }
+
+        return count;
+    }
+
+    /**
+     * 폴더 내 모든 노트 선택
+     */
+    private selectAllInFolder(node: FolderNode, filterStatus?: string) {
+        const notesToSelect = filterStatus
+            ? node.notes.filter(n => n.status === filterStatus)
+            : node.notes;
+
+        notesToSelect.forEach(note => {
+            this.selectedNotes.add(note.file.path);
+        });
+
+        // 서브폴더도 재귀적으로 선택
+        for (const [_, subfolder] of node.subfolders) {
+            this.selectAllInFolder(subfolder, filterStatus);
+        }
+
+        // 체크박스 업데이트
+        this.updateAllCheckboxes();
+        this.updateSelectedCount();
+    }
+
+    /**
+     * 모든 체크박스 상태 업데이트
+     */
+    private updateAllCheckboxes() {
+        const checkboxes = this.contentEl.querySelectorAll('.publication-note-checkbox') as NodeListOf<HTMLInputElement>;
+        checkboxes.forEach(checkbox => {
+            const noteItem = checkbox.closest('.publication-note-item');
+            if (noteItem) {
+                const notePath = noteItem.getAttribute('data-note-path');
+                if (notePath) {
+                    checkbox.checked = this.selectedNotes.has(notePath);
+                }
+            }
+        });
+    }
+
+    /**
+     * 노트 아이템 생성
+     */
+    createNoteItem(container: HTMLElement, note: NoteStatus, depth: number = 0) {
+        const item = container.createDiv({ 
+            cls: 'publication-note-item',
+            attr: { 
+                'data-note-path': note.file.path,
+                style: `padding-left: ${depth * 20}px` 
+            }
+        });
+        
+        const checkbox = item.createEl('input', { 
+            type: 'checkbox',
+            cls: 'publication-note-checkbox'
+        });
+        
+        checkbox.checked = this.selectedNotes.has(note.file.path);
+        
+        checkbox.addEventListener('change', (e) => {
+            const target = e.target as HTMLInputElement;
+            if (target.checked) {
+                this.selectedNotes.add(note.file.path);
+            } else {
+                this.selectedNotes.delete(note.file.path);
+            }
+            this.updateSelectedCount();
+        });
+        
+        const noteInfo = item.createDiv({ cls: 'publication-note-info' });
+        
+        noteInfo.createDiv({ 
+            text: note.file.basename,
+            cls: 'publication-note-name' 
+        });
+        
+        noteInfo.createDiv({ 
+            text: note.file.path,
+            cls: 'publication-note-path' 
+        });
+        
+        if (note.lastPublished) {
+            const date = new Date(note.lastPublished);
+            noteInfo.createDiv({ 
+                text: `Last published: ${date.toLocaleString()}`,
+                cls: 'publication-note-date' 
+            });
+        }
+    }
+
+    /**
+     * 진행 상태 표시
+     */
+    private showProgress(current: number, total: number, message: string) {
+        if (!this.progressBar || !this.progressText) return;
+
+        const progressContainer = this.progressBar.parentElement;
+        if (progressContainer) {
+            progressContainer.removeClass('hidden');
+        }
+
+        const percentage = Math.round((current / total) * 100);
+        this.progressBar.style.width = `${percentage}%`;
+        this.progressText.setText(`${message} (${current}/${total})`);
+    }
+
+    private hideProgress() {
+        const progressContainer = this.progressBar?.parentElement;
+        if (progressContainer) {
+            progressContainer.addClass('hidden');
+        }
+    }
+
     private validateSettings(): boolean {
         if (this.plugin.settings.publishTarget === 'github') {
             return !!(
@@ -135,9 +459,6 @@ export class PublicationCenterModal extends Modal {
         }
     }
 
-    /**
-     * 설정 오류 표시
-     */
     private showSettingsError(contentEl: HTMLElement): void {
         const errorContainer = contentEl.createDiv({ cls: 'publication-settings-error' });
         
@@ -160,32 +481,10 @@ export class PublicationCenterModal extends Modal {
         });
     }
 
-    /**
->>>>>>> feature/upload
-     * 노트 상태 분석
-     */
     async analyzeNotes() {
         this.notes = [];
         const allFiles = this.app.vault.getMarkdownFiles();
         
-        // TODO: 실제 발행 상태 추적 시스템과 연동
-<<<<<<< HEAD
-        // 지금은 샘플 데이터로 표시
-        for (const file of allFiles) {
-            // 간단한 로직: 파일명에 'draft'가 있으면 unpublished
-            if (file.basename.toLowerCase().includes('draft')) {
-                this.notes.push({
-                    file,
-                    status: 'unpublished'
-                });
-            } else {
-                // 나머지는 published로 표시
-                this.notes.push({
-                    file,
-                    status: 'published',
-                    lastPublished: Date.now()
-=======
-        // 지금은 간단한 로직으로 표시
         const publishedNotes = this.plugin.settings.publishedNotes || {};
         
         for (const file of allFiles) {
@@ -193,14 +492,12 @@ export class PublicationCenterModal extends Modal {
             const publishInfo = publishedNotes[file.path];
             
             if (!publishInfo) {
-                // 발행된 적 없음
                 this.notes.push({
                     file,
                     status: 'unpublished',
                     hash: fileHash
                 });
             } else if (publishInfo.hash !== fileHash) {
-                // 변경됨
                 this.notes.push({
                     file,
                     status: 'changed',
@@ -208,26 +505,18 @@ export class PublicationCenterModal extends Modal {
                     lastPublished: publishInfo.timestamp
                 });
             } else {
-                // 발행됨
                 this.notes.push({
                     file,
                     status: 'published',
                     hash: fileHash,
                     lastPublished: publishInfo.timestamp
->>>>>>> feature/upload
                 });
             }
         }
     }
 
-    /**
-<<<<<<< HEAD
-=======
-     * 파일 해시 생성 (간단한 버전)
-     */
     private async getFileHash(file: TFile): Promise<string> {
         const content = await this.app.vault.read(file);
-        // 간단한 해시 (실제로는 crypto를 사용하는 것이 좋음)
         let hash = 0;
         for (let i = 0; i < content.length; i++) {
             const char = content.charCodeAt(i);
@@ -237,175 +526,15 @@ export class PublicationCenterModal extends Modal {
         return hash.toString(36);
     }
 
-    /**
->>>>>>> feature/upload
-     * 섹션 생성
-     */
-    createSection(container: HTMLElement, title: string, status: string, icon: string) {
-        const section = container.createDiv({ cls: 'publication-section' });
-        
-        // 섹션 헤더 (토글 가능)
-        const sectionHeader = section.createDiv({ cls: 'publication-section-header' });
-        
-        const headerContent = sectionHeader.createDiv({ cls: 'publication-section-header-content' });
-        
-        const toggleIcon = headerContent.createSpan({ cls: 'publication-section-toggle' });
-        toggleIcon.innerHTML = '▶';
-        
-        headerContent.createSpan({ 
-            text: `${icon} ${title}`,
-            cls: 'publication-section-title' 
-        });
-        
-        const notesInSection = this.notes.filter(n => n.status === status);
-        const badge = headerContent.createSpan({ 
-            text: `${notesInSection.length}`,
-            cls: 'publication-section-badge' 
-        });
-        
-        // Select All 버튼 추가
-        if (notesInSection.length > 0) {
-            const selectAllBtn = headerContent.createEl('button', {
-                text: 'Select All',
-                cls: 'publication-select-all-btn'
-            });
-            
-            selectAllBtn.addEventListener('click', (e) => {
-<<<<<<< HEAD
-                e.stopPropagation(); // 토글 방지
-=======
-                e.stopPropagation();
->>>>>>> feature/upload
-                this.selectAllInSection(notesInSection);
-            });
-        }
-        
-        // 섹션 컨텐츠
-        const sectionContent = section.createDiv({ cls: 'publication-section-content collapsed' });
-        
-        if (notesInSection.length === 0) {
-            sectionContent.createDiv({ 
-                text: 'No notes',
-                cls: 'publication-empty-state' 
-            });
-        } else {
-            notesInSection.forEach(note => {
-                this.createNoteItem(sectionContent, note);
-            });
-        }
-        
-        // 토글 기능
-        sectionHeader.addEventListener('click', () => {
-            const isCollapsed = sectionContent.hasClass('collapsed');
-            if (isCollapsed) {
-                sectionContent.removeClass('collapsed');
-                toggleIcon.innerHTML = '▼';
-            } else {
-                sectionContent.addClass('collapsed');
-                toggleIcon.innerHTML = '▶';
-            }
-        });
-    }
-
-    /**
-<<<<<<< HEAD
-     * 섹션의 모든 노트 선택
-     */
     selectAllInSection(notes: NoteStatus[]) {
         notes.forEach(note => {
             this.selectedNotes.add(note.file.path);
         });
         
-        // 체크박스 업데이트
-        const checkboxes = this.contentEl.querySelectorAll('.publication-note-checkbox') as NodeListOf<HTMLInputElement>;
-        checkboxes.forEach(checkbox => {
-            const noteItem = checkbox.closest('.publication-note-item');
-            if (noteItem) {
-                checkbox.checked = true;
-            }
-        });
-        
+        this.updateAllCheckboxes();
         this.updateSelectedCount();
     }
 
-    /**
-=======
->>>>>>> feature/upload
-     * 노트 아이템 생성
-     */
-    createNoteItem(container: HTMLElement, note: NoteStatus) {
-        const item = container.createDiv({ cls: 'publication-note-item' });
-        
-        // 체크박스
-        const checkbox = item.createEl('input', { 
-            type: 'checkbox',
-            cls: 'publication-note-checkbox'
-        });
-        
-        checkbox.addEventListener('change', (e) => {
-            const target = e.target as HTMLInputElement;
-            if (target.checked) {
-                this.selectedNotes.add(note.file.path);
-            } else {
-                this.selectedNotes.delete(note.file.path);
-            }
-            this.updateSelectedCount();
-        });
-        
-        // 노트 정보
-        const noteInfo = item.createDiv({ cls: 'publication-note-info' });
-        
-        noteInfo.createDiv({ 
-            text: note.file.basename,
-            cls: 'publication-note-name' 
-        });
-        
-        noteInfo.createDiv({ 
-            text: note.file.path,
-            cls: 'publication-note-path' 
-        });
-        
-        // 상태 표시
-        if (note.lastPublished) {
-            const date = new Date(note.lastPublished);
-            noteInfo.createDiv({ 
-                text: `Last published: ${date.toLocaleString()}`,
-                cls: 'publication-note-date' 
-            });
-        }
-    }
-
-    /**
-<<<<<<< HEAD
-=======
-     * 섹션의 모든 노트 선택
-     */
-    selectAllInSection(notes: NoteStatus[]) {
-        notes.forEach(note => {
-            this.selectedNotes.add(note.file.path);
-        });
-        
-        // 체크박스 업데이트
-        const checkboxes = this.contentEl.querySelectorAll('.publication-note-checkbox') as NodeListOf<HTMLInputElement>;
-        checkboxes.forEach(checkbox => {
-            const noteItem = checkbox.closest('.publication-note-item');
-            if (noteItem) {
-                const noteName = noteItem.querySelector('.publication-note-name')?.textContent;
-                const shouldCheck = Array.from(this.selectedNotes).some(path => {
-                    const file = this.app.vault.getAbstractFileByPath(path);
-                    return file instanceof TFile && file.basename === noteName;
-                });
-                checkbox.checked = shouldCheck;
-            }
-        });
-        
-        this.updateSelectedCount();
-    }
-
-    /**
->>>>>>> feature/upload
-     * 선택된 노트 수 업데이트
-     */
     updateSelectedCount(element?: HTMLElement) {
         const count = this.selectedNotes.size;
         const text = count > 0 ? `${count} note(s) selected` : 'No notes selected';
@@ -420,40 +549,17 @@ export class PublicationCenterModal extends Modal {
         }
     }
 
-    /**
-<<<<<<< HEAD
-     * 선택된 노트 발행
-=======
-     * 선택된 노트 발행 (실제 구현)
->>>>>>> feature/upload
-     */
     async publishSelected() {
         if (this.selectedNotes.size === 0) {
             new Notice('Please select notes to publish');
             return;
         }
 
-<<<<<<< HEAD
-        new Notice(`Publishing ${this.selectedNotes.size} note(s)...`);
-        
-        // TODO: 실제 발행 로직 구현
-        // - GitHub 푸시 또는
-        // - 개인 서버 업로드
-        
-        console.log('Selected notes:', Array.from(this.selectedNotes));
-        
-        // 임시: 2초 후 성공 메시지
-        setTimeout(() => {
-            new Notice('✅ Notes published successfully!');
-            this.close();
-        }, 2000);
-=======
         if (!this.publisher) {
             new Notice('Publisher not initialized. Please check settings.');
             return;
         }
 
-        // 발행 시작
         const selectedFiles: TFile[] = [];
         for (const path of this.selectedNotes) {
             const file = this.app.vault.getAbstractFileByPath(path);
@@ -462,46 +568,133 @@ export class PublicationCenterModal extends Modal {
             }
         }
 
-        new Notice(`Publishing ${selectedFiles.length} note(s)...`);
-
         try {
-            // GitHub 배치 발행
-            const success = await this.publisher.publishFiles(selectedFiles);
-
-            if (success) {
-                // 발행 상태 업데이트
-                await this.updatePublishedStatus(selectedFiles);
+            this.showProgress(0, selectedFiles.length, 'Preparing to publish');
+            
+            let successCount = 0;
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const file = selectedFiles[i];
+                this.showProgress(i + 1, selectedFiles.length, `Publishing ${file.basename}`);
                 
-                // 성공 메시지
-                new Notice(`✅ Successfully published ${selectedFiles.length} notes!`);
-                
-                // 모달 새로고침
-                await this.analyzeNotes();
-                this.close();
+                try {
+                    await this.publisher.publishFile(file);
+                    successCount++;
+                    
+                    const hash = await this.getFileHash(file);
+                    const publishedNotes = this.plugin.settings.publishedNotes || {};
+                    publishedNotes[file.path] = {
+                        hash: hash,
+                        timestamp: Date.now()
+                    };
+                    this.plugin.settings.publishedNotes = publishedNotes;
+                    await this.plugin.saveSettings();
+                } catch (error) {
+                    console.error(`Failed to publish ${file.basename}:`, error);
+                }
             }
+
+            this.hideProgress();
+            new Notice(`✅ Successfully published ${successCount}/${selectedFiles.length} notes!`);
+            
+            await this.analyzeNotes();
+            this.selectedNotes.clear();
+            this.close();
         } catch (error) {
+            this.hideProgress();
             console.error('Publish error:', error);
             new Notice(`❌ Failed to publish: ${error.message}`);
         }
     }
 
-    /**
-     * 발행 상태 업데이트
-     */
-    private async updatePublishedStatus(files: TFile[]) {
-        const publishedNotes = this.plugin.settings.publishedNotes || {};
-        
-        for (const file of files) {
-            const hash = await this.getFileHash(file);
-            publishedNotes[file.path] = {
-                hash: hash,
-                timestamp: Date.now()
-            };
+    async unpublishSelected() {
+        if (this.selectedNotes.size === 0) {
+            new Notice('Please select notes to unpublish');
+            return;
         }
-        
-        this.plugin.settings.publishedNotes = publishedNotes;
-        await this.plugin.saveSettings();
->>>>>>> feature/upload
+
+        if (!this.publisher) {
+            new Notice('Publisher not initialized. Please check settings.');
+            return;
+        }
+
+        const selectedFiles: TFile[] = [];
+        for (const path of this.selectedNotes) {
+            const file = this.app.vault.getAbstractFileByPath(path);
+            if (file instanceof TFile) {
+                selectedFiles.push(file);
+            }
+        }
+
+        const confirmed = await this.showConfirmDialog(
+            'Unpublish Notes',
+            `Are you sure you want to unpublish ${selectedFiles.length} note(s) from GitHub?`
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            this.showProgress(0, 1, 'Unpublishing notes from GitHub...');
+            
+            const success = await this.publisher.deleteFiles(selectedFiles);
+
+            if (success) {
+                const publishedNotes = this.plugin.settings.publishedNotes || {};
+                for (const file of selectedFiles) {
+                    delete publishedNotes[file.path];
+                }
+                this.plugin.settings.publishedNotes = publishedNotes;
+                await this.plugin.saveSettings();
+
+                this.hideProgress();
+                new Notice(`✅ Successfully unpublished ${selectedFiles.length} notes!`);
+                
+                await this.analyzeNotes();
+                this.selectedNotes.clear();
+                this.close();
+            } else {
+                this.hideProgress();
+                new Notice(`❌ Failed to unpublish notes`);
+            }
+        } catch (error) {
+            this.hideProgress();
+            console.error('Unpublish error:', error);
+            new Notice(`❌ Failed to unpublish: ${error.message}`);
+        }
+    }
+
+    private showConfirmDialog(title: string, message: string): Promise<boolean> {
+        return new Promise((resolve) => {
+            const modal = new Modal(this.app);
+            modal.titleEl.setText(title);
+            
+            const contentEl = modal.contentEl;
+            contentEl.createEl('p', { text: message });
+            
+            const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
+            buttonContainer.style.display = 'flex';
+            buttonContainer.style.justifyContent = 'flex-end';
+            buttonContainer.style.gap = '8px';
+            buttonContainer.style.marginTop = '16px';
+            
+            const cancelBtn = buttonContainer.createEl('button', { text: 'Cancel' });
+            cancelBtn.addEventListener('click', () => {
+                modal.close();
+                resolve(false);
+            });
+            
+            const confirmBtn = buttonContainer.createEl('button', { 
+                text: 'Unpublish',
+                cls: 'mod-warning'
+            });
+            confirmBtn.addEventListener('click', () => {
+                modal.close();
+                resolve(true);
+            });
+            
+            modal.open();
+        });
     }
 
     onClose() {

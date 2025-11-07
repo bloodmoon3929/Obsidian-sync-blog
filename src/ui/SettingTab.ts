@@ -152,6 +152,17 @@ export class BlogSyncSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
+		new Setting(containerEl)
+			.setName('Blog Assets Path')
+			.setDesc('저장소 내 이미지/파일 저장 경로 (예: public/images)')
+			.addText(text => text
+				.setPlaceholder('public/images')
+				.setValue(this.plugin.settings.blogAssetsPath)
+				.onChange(async (value) => {
+					this.plugin.settings.blogAssetsPath = value;
+					await this.plugin.saveSettings();
+				}));
+
         // 연결 테스트 버튼
         new Setting(containerEl)
             .setName('Test Connection')
@@ -169,7 +180,8 @@ export class BlogSyncSettingTab extends PluginSettingTab {
                             githubUsername: this.plugin.settings.githubUsername,
                             githubRepo: this.plugin.settings.githubRepo,
                             githubBranch: this.plugin.settings.githubBranch,
-                            blogContentPath: this.plugin.settings.blogContentPath
+                            blogContentPath: this.plugin.settings.blogContentPath,
+                			blogAssetsPath: this.plugin.settings.blogAssetsPath 
                         });
 
                         const success = await publisher.testConnection();
