@@ -3,6 +3,7 @@ import { BlogSyncSettings, DEFAULT_SETTINGS } from './src/types/settings';
 import { BlogSyncStatusBar } from './src/ui/StatusBar';
 import { NotificationManager } from './src/ui/Notification';
 import { BlogSyncSettingTab } from './src/ui/SettingTab';
+import { PublicationCenterModal } from 'src/ui/PublicationCenterModal';
 
 export default class BlogSyncPlugin extends Plugin {
 	settings: BlogSyncSettings;
@@ -20,8 +21,17 @@ export default class BlogSyncPlugin extends Plugin {
 		this.statusBar = new BlogSyncStatusBar(this);
 
 		// 리본 아이콘 추가
-		this.addRibbonIcon('upload-cloud', '블로그에 동기화', async (evt: MouseEvent) => {
-			await this.syncCurrentFile();
+		this.addRibbonIcon('book-open', 'Publication Center', (evt: MouseEvent) => {
+			new PublicationCenterModal(this.app, this).open();
+		});
+
+		// 커맨드 추가
+		this.addCommand({
+			id: 'open-publication-center',
+			name: 'Open Publication Center',
+			callback: () => {
+				new PublicationCenterModal(this.app, this).open();
+			}
 		});
 
 		// 커맨드 추가
