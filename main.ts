@@ -21,7 +21,7 @@ export default class BlogSyncPlugin extends Plugin {
 		this.statusBar = new BlogSyncStatusBar(this);
 
 		// 리본 아이콘 추가
-		this.addRibbonIcon('book-open', 'Publication Center', (evt: MouseEvent) => {
+		this.addRibbonIcon('cloud-upload', 'Publication Center', (evt: MouseEvent) => {
 			new PublicationCenterModal(this.app, this).open();
 		});
 
