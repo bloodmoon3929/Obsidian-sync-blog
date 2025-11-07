@@ -1,243 +1,327 @@
-import { App, PluginSettingTab, Setting } from 'obsidian';
+// src/ui/SettingTab.ts
+
+import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
 import BlogSyncPlugin from '../../main';
+import { GitHubPublisher } from '../publisher/GitHubPublisher';
 
-/**
- * 블로그 동기화 플러그인 설정 탭
- */
 export class BlogSyncSettingTab extends PluginSettingTab {
-	plugin: BlogSyncPlugin;
+    plugin: BlogSyncPlugin;
 
-	constructor(app: App, plugin: BlogSyncPlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
+    constructor(app: App, plugin: BlogSyncPlugin) {
+        super(app, plugin);
+        this.plugin = plugin;
+    }
 
-	display(): void {
-		const { containerEl } = this;
-		containerEl.empty();
+    display(): void {
+        const { containerEl } = this;
+        containerEl.empty();
 
-		// 헤더
-		containerEl.createEl('h1', { text: '블로그 동기화 설정' });
+        containerEl.createEl('h2', { text: 'Blog Sync Settings' });
 
-		// === 블로그 설정 섹션 ===
-		containerEl.createEl('h2', { text: '📁 블로그 설정' });
+        // ============================================
+        // 기본 설정
+        // ============================================
+        containerEl.createEl('h3', { text: 'Basic Settings' });
 
-		new Setting(containerEl)
-			.setName('블로그 폴더 경로')
-			.setDesc('블로그 저장소의 절대 경로를 입력하세요')
-			.addText(text => text
-				.setPlaceholder('C:\\Users\\username\\blog')
-				.setValue(this.plugin.settings.blogFolderPath)
-				.onChange(async (value) => {
-					this.plugin.settings.blogFolderPath = value;
-					await this.plugin.saveSettings();
-				}));
+        new Setting(containerEl)
+            .setName('Blog folder path')
+            .setDesc('로컬 블로그 폴더 경로')
+            .addText(text => text
+                .setPlaceholder('C:/Users/username/blog')
+                .setValue(this.plugin.settings.blogFolderPath)
+                .onChange(async (value) => {
+                    this.plugin.settings.blogFolderPath = value;
+                    await this.plugin.saveSettings();
+                }));
 
-		// === Git 설정 섹션 ===
-		containerEl.createEl('h2', { text: '🔀 Git 설정' });
+        new Setting(containerEl)
+            .setName('Show notifications')
+            .setDesc('작업 완료 시 알림 표시')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showNotifications)
+                .onChange(async (value) => {
+                    this.plugin.settings.showNotifications = value;
+                    await this.plugin.saveSettings();
+                }));
 
-		new Setting(containerEl)
-			.setName('Git 활성화')
-			.setDesc('Git을 통한 업로드를 활성화합니다')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.gitEnabled)
-				.onChange(async (value) => {
-					this.plugin.settings.gitEnabled = value;
-					await this.plugin.saveSettings();
-					this.display(); // 재렌더링
-				}));
+        // ============================================
+        // 발행 대상 선택
+        // ============================================
+        containerEl.createEl('h3', { text: 'Publish Target' });
 
-		if (this.plugin.settings.gitEnabled) {
-			new Setting(containerEl)
-				.setName('Git 브랜치')
-				.setDesc('푸시할 브랜치 이름')
-				.addText(text => text
-					.setPlaceholder('main')
-					.setValue(this.plugin.settings.gitBranch)
-					.onChange(async (value) => {
-						this.plugin.settings.gitBranch = value;
-						await this.plugin.saveSettings();
-					}));
+        new Setting(containerEl)
+            .setName('Publish to')
+            .setDesc('노트를 발행할 대상을 선택하세요')
+            .addDropdown(dropdown => dropdown
+                .addOption('github', 'GitHub Repository')
+                .addOption('server', 'Personal Server (FTP/SFTP)')
+                .setValue(this.plugin.settings.publishTarget)
+                .onChange(async (value: 'github' | 'server') => {
+                    this.plugin.settings.publishTarget = value;
+                    await this.plugin.saveSettings();
+                    this.display(); // UI 새로고침
+                }));
 
-			new Setting(containerEl)
-				.setName('자동 커밋')
-				.setDesc('동기화 시 자동으로 커밋합니다')
-				.addToggle(toggle => toggle
-					.setValue(this.plugin.settings.gitAutoCommit)
-					.onChange(async (value) => {
-						this.plugin.settings.gitAutoCommit = value;
-						await this.plugin.saveSettings();
-					}));
+        // ============================================
+        // GitHub 설정
+        // ============================================
+        if (this.plugin.settings.publishTarget === 'github') {
+            this.displayGitHubSettings(containerEl);
+        }
 
-			new Setting(containerEl)
-				.setName('커밋 메시지')
-				.setDesc('{{filename}}은 파일명으로 대체됩니다')
-				.addText(text => text
-					.setPlaceholder('Update blog post: {{filename}}')
-					.setValue(this.plugin.settings.gitCommitMessage)
-					.onChange(async (value) => {
-						this.plugin.settings.gitCommitMessage = value;
-						await this.plugin.saveSettings();
-					}));
-		}
+        // ============================================
+        // 서버 설정
+        // ============================================
+        if (this.plugin.settings.publishTarget === 'server') {
+            this.displayServerSettings(containerEl);
+        }
+    }
 
-		// === SFTP 설정 섹션 ===
-		containerEl.createEl('h2', { text: '🌐 SFTP 설정' });
+    /**
+     * GitHub 설정 UI
+     */
+    private displayGitHubSettings(containerEl: HTMLElement): void {
+        containerEl.createEl('h3', { text: '⚙️ GitHub Settings' });
 
-		new Setting(containerEl)
-			.setName('SFTP 활성화')
-			.setDesc('SFTP를 통한 업로드를 활성화합니다')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.sftpEnabled)
-				.onChange(async (value) => {
-					this.plugin.settings.sftpEnabled = value;
-					await this.plugin.saveSettings();
-					this.display(); // 재렌더링
-				}));
+        // GitHub Token
+        new Setting(containerEl)
+            .setName('GitHub Token')
+            .setDesc('GitHub Personal Access Token (repo 권한 필요)')
+            .addText(text => {
+                text
+                    .setPlaceholder('ghp_xxxxxxxxxxxx')
+                    .setValue(this.plugin.settings.githubToken)
+                    .onChange(async (value) => {
+                        this.plugin.settings.githubToken = value;
+                        await this.plugin.saveSettings();
+                    });
+                text.inputEl.type = 'password';
+                return text;
+            })
+            .addButton(button => button
+                .setButtonText('How to get token?')
+                .onClick(() => {
+                    window.open('https://github.com/settings/tokens/new');
+                }));
 
-		if (this.plugin.settings.sftpEnabled) {
-			new Setting(containerEl)
-				.setName('호스트')
-				.setDesc('SFTP 서버 주소')
-				.addText(text => text
-					.setPlaceholder('example.com')
-					.setValue(this.plugin.settings.sftpHost)
-					.onChange(async (value) => {
-						this.plugin.settings.sftpHost = value;
-						await this.plugin.saveSettings();
-					}));
+        // GitHub Username
+        new Setting(containerEl)
+            .setName('GitHub Username')
+            .setDesc('GitHub 사용자 이름')
+            .addText(text => text
+                .setPlaceholder('your-username')
+                .setValue(this.plugin.settings.githubUsername)
+                .onChange(async (value) => {
+                    this.plugin.settings.githubUsername = value;
+                    await this.plugin.saveSettings();
+                }));
 
-			new Setting(containerEl)
-				.setName('포트')
-				.setDesc('SFTP 포트 번호 (기본: 22)')
-				.addText(text => text
-					.setPlaceholder('22')
-					.setValue(String(this.plugin.settings.sftpPort))
-					.onChange(async (value) => {
-						this.plugin.settings.sftpPort = parseInt(value) || 22;
-						await this.plugin.saveSettings();
-					}));
+        // Repository Name
+        new Setting(containerEl)
+            .setName('Repository Name')
+            .setDesc('블로그 저장소 이름')
+            .addText(text => text
+                .setPlaceholder('my-blog')
+                .setValue(this.plugin.settings.githubRepo)
+                .onChange(async (value) => {
+                    this.plugin.settings.githubRepo = value;
+                    await this.plugin.saveSettings();
+                }));
 
-			new Setting(containerEl)
-				.setName('사용자명')
-				.setDesc('SFTP 로그인 사용자명')
-				.addText(text => text
-					.setPlaceholder('username')
-					.setValue(this.plugin.settings.sftpUsername)
-					.onChange(async (value) => {
-						this.plugin.settings.sftpUsername = value;
-						await this.plugin.saveSettings();
-					}));
+        // Branch
+        new Setting(containerEl)
+            .setName('Branch')
+            .setDesc('푸시할 브랜치 이름')
+            .addText(text => text
+                .setPlaceholder('main')
+                .setValue(this.plugin.settings.githubBranch)
+                .onChange(async (value) => {
+                    this.plugin.settings.githubBranch = value;
+                    await this.plugin.saveSettings();
+                }));
 
-			new Setting(containerEl)
-				.setName('비밀번호')
-				.setDesc('SFTP 로그인 비밀번호')
-				.addText(text => {
-					text.inputEl.type = 'password';
-					text.setPlaceholder('password')
-						.setValue(this.plugin.settings.sftpPassword)
-						.onChange(async (value) => {
-							this.plugin.settings.sftpPassword = value;
-							await this.plugin.saveSettings();
-						});
-				});
+        // Blog Content Path
+        new Setting(containerEl)
+            .setName('Blog Content Path')
+            .setDesc('저장소 내 블로그 컨텐츠 경로 (예: content/blog)')
+            .addText(text => text
+                .setPlaceholder('content/blog')
+                .setValue(this.plugin.settings.blogContentPath)
+                .onChange(async (value) => {
+                    this.plugin.settings.blogContentPath = value;
+                    await this.plugin.saveSettings();
+                }));
 
-			new Setting(containerEl)
-				.setName('원격 경로')
-				.setDesc('서버의 업로드 대상 경로')
-				.addText(text => text
-					.setPlaceholder('/var/www/html/blog')
-					.setValue(this.plugin.settings.sftpRemotePath)
-					.onChange(async (value) => {
-						this.plugin.settings.sftpRemotePath = value;
-						await this.plugin.saveSettings();
-					}));
-		}
+        // 연결 테스트 버튼
+        new Setting(containerEl)
+            .setName('Test Connection')
+            .setDesc('GitHub 연결 테스트')
+            .addButton(button => button
+                .setButtonText('Test Connection')
+                .setCta()
+                .onClick(async () => {
+                    button.setDisabled(true);
+                    button.setButtonText('Testing...');
+                    
+                    try {
+                        const publisher = new GitHubPublisher(this.plugin, {
+                            githubToken: this.plugin.settings.githubToken,
+                            githubUsername: this.plugin.settings.githubUsername,
+                            githubRepo: this.plugin.settings.githubRepo,
+                            githubBranch: this.plugin.settings.githubBranch,
+                            blogContentPath: this.plugin.settings.blogContentPath
+                        });
 
-		// === 업로드 전략 섹션 ===
-		containerEl.createEl('h2', { text: '🚀 업로드 전략' });
+                        const success = await publisher.testConnection();
+                        
+                        if (success) {
+                            button.setButtonText('✅ Success!');
+                        } else {
+                            button.setButtonText('❌ Failed');
+                        }
+                    } catch (error) {
+                        new Notice('Connection test failed: ' + error.message);
+                        button.setButtonText('❌ Failed');
+                    }
+                    
+                    setTimeout(() => {
+                        button.setDisabled(false);
+                        button.setButtonText('Test Connection');
+                    }, 3000);
+                }));
 
-		new Setting(containerEl)
-			.setName('업로드 방식')
-			.setDesc('Git과 SFTP의 업로드 방식을 선택하세요')
-			.addDropdown(dropdown => dropdown
-				.addOption('sequential', '순차 (Git → SFTP)')
-				.addOption('parallel', '병렬 (동시 실행)')
-				.addOption('fallback', 'Fallback (실패 시 다른 방법)')
-				.setValue(this.plugin.settings.uploadStrategy)
-				.onChange(async (value) => {
-					this.plugin.settings.uploadStrategy = value as any;
-					await this.plugin.saveSettings();
-				}));
+        // 설정 가이드
+        const guideEl = containerEl.createDiv({ cls: 'setting-item-description' });
+        guideEl.style.padding = '16px';
+        guideEl.style.marginTop = '16px';
+        guideEl.style.border = '1px solid var(--background-modifier-border)';
+        guideEl.style.borderRadius = '8px';
+        guideEl.style.backgroundColor = 'var(--background-secondary)';
+        
+        guideEl.createEl('h4', { text: '📖 Setup Guide' });
+        guideEl.createEl('ol').innerHTML = `
+            <li>GitHub에서 Personal Access Token을 생성하세요 (repo 권한 필요)</li>
+            <li>위의 설정을 모두 입력하세요</li>
+            <li>"Test Connection" 버튼으로 연결을 확인하세요</li>
+            <li>Publication Center에서 노트를 선택하고 발행하세요</li>
+        `;
+    }
 
-		// === 파일 처리 옵션 섹션 ===
-		containerEl.createEl('h2', { text: '📝 파일 처리 옵션' });
+    /**
+     * 서버 설정 UI
+     */
+    private displayServerSettings(containerEl: HTMLElement): void {
+        containerEl.createEl('h3', { text: '🖥️ Server Settings' });
 
-		new Setting(containerEl)
-			.setName('마크다운 변환')
-			.setDesc('Obsidian 문법을 표준 마크다운으로 변환합니다')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.convertMarkdown)
-				.onChange(async (value) => {
-					this.plugin.settings.convertMarkdown = value;
-					await this.plugin.saveSettings();
-				}));
+        // Server Type
+        new Setting(containerEl)
+            .setName('Server Type')
+            .setDesc('서버 연결 방식')
+            .addDropdown(dropdown => dropdown
+                .addOption('sftp', 'SFTP (SSH File Transfer)')
+                .addOption('ftp', 'FTP (File Transfer Protocol)')
+                .setValue(this.plugin.settings.serverType)
+                .onChange(async (value: 'ftp' | 'sftp') => {
+                    this.plugin.settings.serverType = value;
+                    await this.plugin.saveSettings();
+                    this.display();
+                }));
 
-		new Setting(containerEl)
-			.setName('프론트매터 생성')
-			.setDesc('YAML 프론트매터를 자동으로 생성합니다')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.generateFrontmatter)
-				.onChange(async (value) => {
-					this.plugin.settings.generateFrontmatter = value;
-					await this.plugin.saveSettings();
-				}));
+        // Server Host
+        new Setting(containerEl)
+            .setName('Server Host')
+            .setDesc('서버 주소 또는 IP')
+            .addText(text => text
+                .setPlaceholder('example.com or 192.168.1.100')
+                .setValue(this.plugin.settings.serverHost)
+                .onChange(async (value) => {
+                    this.plugin.settings.serverHost = value;
+                    await this.plugin.saveSettings();
+                }));
 
-		new Setting(containerEl)
-			.setName('참조 파일 복사')
-			.setDesc('이미지 등 참조된 파일을 함께 복사합니다')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.copyAssets)
-				.onChange(async (value) => {
-					this.plugin.settings.copyAssets = value;
-					await this.plugin.saveSettings();
-				}));
+        // Server Port
+        new Setting(containerEl)
+            .setName('Server Port')
+            .setDesc(this.plugin.settings.serverType === 'sftp' ? 'SFTP 포트 (기본: 22)' : 'FTP 포트 (기본: 21)')
+            .addText(text => text
+                .setPlaceholder(this.plugin.settings.serverType === 'sftp' ? '22' : '21')
+                .setValue(String(this.plugin.settings.serverPort))
+                .onChange(async (value) => {
+                    const port = parseInt(value);
+                    if (!isNaN(port)) {
+                        this.plugin.settings.serverPort = port;
+                        await this.plugin.saveSettings();
+                    }
+                }));
 
-		// === UI 설정 섹션 ===
-		containerEl.createEl('h2', { text: '🎨 UI 설정' });
+        // Username
+        new Setting(containerEl)
+            .setName('Username')
+            .setDesc('서버 사용자 이름')
+            .addText(text => text
+                .setPlaceholder('username')
+                .setValue(this.plugin.settings.serverUsername)
+                .onChange(async (value) => {
+                    this.plugin.settings.serverUsername = value;
+                    await this.plugin.saveSettings();
+                }));
 
-		new Setting(containerEl)
-			.setName('상태바 표시')
-			.setDesc('하단 상태바에 동기화 상태를 표시합니다')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.showStatusBar)
-				.onChange(async (value) => {
-					this.plugin.settings.showStatusBar = value;
-					await this.plugin.saveSettings();
-				}));
+        // Password
+        new Setting(containerEl)
+            .setName('Password')
+            .setDesc('서버 비밀번호')
+            .addText(text => {
+                text
+                    .setPlaceholder('password')
+                    .setValue(this.plugin.settings.serverPassword)
+                    .onChange(async (value) => {
+                        this.plugin.settings.serverPassword = value;
+                        await this.plugin.saveSettings();
+                    });
+                text.inputEl.type = 'password';
+                return text;
+            });
 
-		new Setting(containerEl)
-			.setName('알림 표시')
-			.setDesc('동기화 결과를 알림으로 표시합니다')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.showNotifications)
-				.onChange(async (value) => {
-					this.plugin.settings.showNotifications = value;
-					await this.plugin.saveSettings();
-				}));
+        // Remote Path
+        new Setting(containerEl)
+            .setName('Remote Path')
+            .setDesc('서버의 블로그 경로 (예: /var/www/blog)')
+            .addText(text => text
+                .setPlaceholder('/var/www/blog')
+                .setValue(this.plugin.settings.serverPath)
+                .onChange(async (value) => {
+                    this.plugin.settings.serverPath = value;
+                    await this.plugin.saveSettings();
+                }));
 
-		// === 테스트 버튼 ===
-		containerEl.createEl('h2', { text: '🧪 테스트' });
+        // Test Connection (서버용)
+        new Setting(containerEl)
+            .setName('Test Connection')
+            .setDesc('서버 연결 테스트')
+            .addButton(button => button
+                .setButtonText('Test Connection')
+                .setCta()
+                .onClick(async () => {
+                    new Notice('서버 연결 기능은 곧 구현됩니다!');
+                    // TODO: 서버 연결 테스트 구현
+                }));
 
-		new Setting(containerEl)
-			.setName('연결 테스트')
-			.setDesc('Git 및 SFTP 연결을 테스트합니다')
-			.addButton(button => button
-				.setButtonText('테스트 실행')
-				.setCta()
-				.onClick(async () => {
-					// TODO: 실제 테스트 로직 구현
-					this.plugin.notificationManager.info('테스트 기능은 곧 구현됩니다!');
-				}));
-	}
+        // 설정 가이드
+        const guideEl = containerEl.createDiv({ cls: 'setting-item-description' });
+        guideEl.style.padding = '16px';
+        guideEl.style.marginTop = '16px';
+        guideEl.style.border = '1px solid var(--background-modifier-border)';
+        guideEl.style.borderRadius = '8px';
+        guideEl.style.backgroundColor = 'var(--background-secondary)';
+        
+        guideEl.createEl('h4', { text: '📖 Setup Guide' });
+        guideEl.createEl('p', { 
+            text: 'SFTP는 SSH 기반으로 더 안전하며, FTP보다 권장됩니다.' 
+        });
+        guideEl.createEl('ol').innerHTML = `
+            <li>서버 접속 정보를 모두 입력하세요</li>
+            <li>"Test Connection" 버튼으로 연결을 확인하세요</li>
+            <li>Publication Center에서 노트를 선택하고 발행하세요</li>
+        `;
+    }
 }
