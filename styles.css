@@ -1,76 +1,95 @@
-/* 블로그 동기화 플러그인 스타일 */
+/* Publication Center Modal - 완전한 CSS 코드 */
 
-/* 상태바 스타일 */
-.blog-sync-status {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	padding: 0 8px;
+/* 모달 기본 설정 */
+.publication-center-modal {
+    padding: 0 !important;
 }
 
-.blog-sync-icon {
-	font-size: 14px;
-	line-height: 1;
+.publication-center-modal .modal-content {
+    padding: 0 !important;
+    height: 80vh;
+    max-height: 800px;
+    display: flex;
+    flex-direction: column;
 }
 
-.blog-sync-text {
-	font-size: 12px;
+/* 래퍼 - flex 컨테이너 */
+.publication-center-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
 }
 
-/* 상태별 색상 */
-.status-idle .blog-sync-text {
-	color: var(--text-muted);
+/* 헤더 - 고정 */
+.publication-center-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    flex-shrink: 0;
 }
 
-.status-syncing .blog-sync-icon {
-	animation: rotate 1s linear infinite;
+.publication-center-title {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 600;
 }
 
-.status-syncing .blog-sync-text {
-	color: var(--text-accent);
+/* 컨텐츠 - 스크롤 가능 영역 */
+.publication-center-content {
+    padding: 16px 24px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex: 1 1 auto;
+    min-height: 0;
 }
 
-.status-success .blog-sync-text {
-	color: var(--color-green);
+/* 푸터 - 고정 */
+.publication-center-footer {
+    padding: 16px 24px;
+    border-top: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
 }
 
-.status-error .blog-sync-text {
-	color: var(--color-red);
+.publication-center-selected-count {
+    font-size: 13px;
+    color: var(--text-muted);
+    flex: 1;
 }
 
-/* 회전 애니메이션 */
-@keyframes rotate {
-	from {
-		transform: rotate(0deg);
-	}
-	to {
-		transform: rotate(360deg);
-	}
+.publication-center-publish-btn {
+    padding: 10px 24px;
+    font-weight: 600;
+    font-size: 14px;
+    white-space: nowrap;
 }
 
-/* 설정 탭 스타일 */
-.blog-sync-settings h2 {
-	margin-top: 30px;
-	margin-bottom: 15px;
-	padding-bottom: 8px;
-	border-bottom: 1px solid var(--background-modifier-border);
-	color: var(--text-normal);
-	font-size: 1.2em;
-	font-weight: 600;
+/* Section */
+.publication-section {
+    margin-bottom: 16px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    overflow: hidden;
 }
 
-.blog-sync-settings h1 {
-	margin-bottom: 20px;
-	color: var(--text-normal);
-	font-size: 1.5em;
-	font-weight: 700;
+.publication-section:last-child {
+    margin-bottom: 0;
 }
 
-/* 리본 아이콘 호버 효과 */
-.workspace-ribbon-collapse-btn[aria-label*="블로그에 동기화"]:hover {
-	color: var(--text-accent);
+.publication-section-header {
+    padding: 12px 16px;
+    background: var(--background-secondary);
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s;
+    display: flex;
+    align-items: center;
 }
-<<<<<<< HEAD
 
 /* 연결 테스트 모달 스타일 */
 .test-section {
@@ -127,5 +146,3 @@
 	margin: 4px 0;
 	line-height: 1.5;
 }
-=======
->>>>>>> feature/UI
