@@ -83,14 +83,15 @@ export class PublicationCenterModal extends Modal {
         }
 
         // 블로그 링크 버튼
-        if (this.plugin.settings.blogUrl) {
+        if (this.plugin.settings.githubUsername && this.plugin.settings.githubRepo) {
             const headerRight = headerContent.createDiv({ cls: 'publication-header-right' });
+            const blogUrl = `https://${this.plugin.settings.githubUsername}.github.io/${this.plugin.settings.githubRepo}`;
             const blogLinkBtn = headerRight.createEl('button', {
                 text: '🌐 View Blog',
                 cls: 'publication-blog-link-btn'
             });
             blogLinkBtn.addEventListener('click', () => {
-                window.open(this.plugin.settings.blogUrl, '_blank');
+                window.open(blogUrl, '_blank');
             });
         }
 

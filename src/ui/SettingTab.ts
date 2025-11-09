@@ -140,18 +140,6 @@ export class BlogSyncSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
-        // Blog URL
-        new Setting(containerEl)
-            .setName('Blog URL')
-            .setDesc('블로그 주소 (예: https://username.github.io/repo)')
-            .addText(text => text
-                .setPlaceholder('https://username.github.io/repo')
-                .setValue(this.plugin.settings.blogUrl)
-                .onChange(async (value) => {
-                    this.plugin.settings.blogUrl = value;
-                    await this.plugin.saveSettings();
-                }));
-
         // Public Base Path
         new Setting(containerEl)
             .setName('Public Base Path')
