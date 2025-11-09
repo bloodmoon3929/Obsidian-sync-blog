@@ -140,28 +140,52 @@ export class BlogSyncSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
+        // Blog URL
+        new Setting(containerEl)
+            .setName('Blog URL')
+            .setDesc('블로그 주소 (예: https://username.github.io/repo)')
+            .addText(text => text
+                .setPlaceholder('https://username.github.io/repo')
+                .setValue(this.plugin.settings.blogUrl)
+                .onChange(async (value) => {
+                    this.plugin.settings.blogUrl = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        // Public Base Path
+        new Setting(containerEl)
+            .setName('Public Base Path')
+            .setDesc('웹 퍼블리싱 기본 경로 (예: src/site) - Quartz 빌드 시 루트가 되는 경로')
+            .addText(text => text
+                .setPlaceholder('src/site')
+                .setValue(this.plugin.settings.publicBasePath)
+                .onChange(async (value) => {
+                    this.plugin.settings.publicBasePath = value;
+                    await this.plugin.saveSettings();
+                }));
+
         // Blog Content Path
         new Setting(containerEl)
             .setName('Blog Content Path')
-            .setDesc('저장소 내 블로그 컨텐츠 경로 (예: content/blog)')
+            .setDesc('노트 저장 경로 (예: notes) - Public Base Path 하위 경로')
             .addText(text => text
-                .setPlaceholder('content/blog')
+                .setPlaceholder('notes')
                 .setValue(this.plugin.settings.blogContentPath)
                 .onChange(async (value) => {
                     this.plugin.settings.blogContentPath = value;
                     await this.plugin.saveSettings();
                 }));
 
-		new Setting(containerEl)
-			.setName('Blog Assets Path')
-			.setDesc('저장소 내 이미지/파일 저장 경로 (예: public/images)')
-			.addText(text => text
-				.setPlaceholder('public/images')
-				.setValue(this.plugin.settings.blogAssetsPath)
-				.onChange(async (value) => {
-					this.plugin.settings.blogAssetsPath = value;
-					await this.plugin.saveSettings();
-				}));
+        new Setting(containerEl)
+            .setName('Blog Assets Path')
+            .setDesc('이미지 저장 경로 (예: img/user) - Public Base Path 하위 경로')
+            .addText(text => text
+                .setPlaceholder('img/user')
+                .setValue(this.plugin.settings.blogAssetsPath)
+                .onChange(async (value) => {
+                    this.plugin.settings.blogAssetsPath = value;
+                    await this.plugin.saveSettings();
+                }));
 
         // 연결 테스트 버튼
         new Setting(containerEl)
@@ -180,8 +204,9 @@ export class BlogSyncSettingTab extends PluginSettingTab {
                             githubUsername: this.plugin.settings.githubUsername,
                             githubRepo: this.plugin.settings.githubRepo,
                             githubBranch: this.plugin.settings.githubBranch,
+                            publicBasePath: this.plugin.settings.publicBasePath,
                             blogContentPath: this.plugin.settings.blogContentPath,
-                			blogAssetsPath: this.plugin.settings.blogAssetsPath 
+                            blogAssetsPath: this.plugin.settings.blogAssetsPath
                         });
 
                         const success = await publisher.testConnection();

@@ -46,6 +46,7 @@ export class PublicationCenterModal extends Modal {
                 githubUsername: this.plugin.settings.githubUsername,
                 githubRepo: this.plugin.settings.githubRepo,
                 githubBranch: this.plugin.settings.githubBranch,
+                publicBasePath: this.plugin.settings.publicBasePath,
                 blogContentPath: this.plugin.settings.blogContentPath,
                 blogAssetsPath: this.plugin.settings.blogAssetsPath
             });
@@ -68,16 +69,29 @@ export class PublicationCenterModal extends Modal {
         const header = modalWrapper.createDiv({ cls: 'publication-center-header' });
         const headerContent = header.createDiv({ cls: 'publication-header-content' });
         
-        headerContent.createEl('h2', { 
+        const headerLeft = headerContent.createDiv({ cls: 'publication-header-left' });
+        headerLeft.createEl('h2', { 
             text: '📚 Publication Center',
             cls: 'publication-center-title' 
         });
         
-        const targetBadge = headerContent.createDiv({ cls: 'publication-target-badge' });
+        const targetBadge = headerLeft.createDiv({ cls: 'publication-target-badge' });
         if (this.plugin.settings.publishTarget === 'github') {
             targetBadge.innerHTML = `🐙 GitHub: ${this.plugin.settings.githubUsername}/${this.plugin.settings.githubRepo}`;
         } else {
             targetBadge.innerHTML = `🖥️ Server: ${this.plugin.settings.serverHost}`;
+        }
+
+        // 블로그 링크 버튼
+        if (this.plugin.settings.blogUrl) {
+            const headerRight = headerContent.createDiv({ cls: 'publication-header-right' });
+            const blogLinkBtn = headerRight.createEl('button', {
+                text: '🌐 View Blog',
+                cls: 'publication-blog-link-btn'
+            });
+            blogLinkBtn.addEventListener('click', () => {
+                window.open(this.plugin.settings.blogUrl, '_blank');
+            });
         }
 
         // 진행 상태바

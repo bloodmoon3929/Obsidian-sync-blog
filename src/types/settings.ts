@@ -18,8 +18,10 @@ export interface BlogSyncSettings {
     githubUsername: string;
     githubRepo: string;
     githubBranch: string;
-    blogContentPath: string;  // 노트가 저장될 경로
-    blogAssetsPath: string;   // 이미지가 저장될 경로
+    blogUrl: string;          // 블로그 URL (예: https://username.github.io/repo)
+    publicBasePath: string;   // 웹 퍼블리싱 기본 경로 (예: src/site)
+    blogContentPath: string;  // 노트가 저장될 경로 (예: notes)
+    blogAssetsPath: string;   // 이미지가 저장될 경로 (예: img/user)
     
     // 서버 설정 (FTP/SFTP)
     serverType: 'ftp' | 'sftp';
@@ -41,8 +43,10 @@ export const DEFAULT_SETTINGS: BlogSyncSettings = {
     githubUsername: '',
     githubRepo: '',
     githubBranch: 'main',
-    blogContentPath: 'content/blog',
-    blogAssetsPath: 'public/images',
+    blogUrl: '',
+    publicBasePath: 'src/site',
+    blogContentPath: 'notes',
+    blogAssetsPath: 'img/user',
     
     serverType: 'sftp',
     serverHost: '',

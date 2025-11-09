@@ -9,8 +9,9 @@ export interface GitHubSettings {
     githubUsername: string;
     githubRepo: string;
     githubBranch: string;
-    blogContentPath: string; // 예: 'content/blog'
-    blogAssetsPath: string;  // 예: 'public/images'
+    publicBasePath: string;  // 예: 'src/site'
+    blogContentPath: string; // 예: 'notes'
+    blogAssetsPath: string;  // 예: 'img/user'
 }
 
 interface FileBlob {
@@ -48,33 +49,41 @@ export class GitHubPublisher {
     }
 
     /**
+     * 전체 경로 생성 (publicBasePath + relativePath)
+     */
+    private getFullPath(...parts: string[]): string {
+        const filtered = parts.filter(p => p && p.trim());
+        const joined = filtered.map(p => this.normalizePath(p)).join('/');
+        return joined;
+    }
+
+    /**
      * Obsidian 볼트 내 파일의 상대 경로를 유지하면서 GitHub 경로 생성
+     * 예: src/site/notes/folder/note.md
      */
     private getFilePath(file: TFile): string {
-        const basePath = this.normalizePath(this.settings.blogContentPath);
-        
         // 파일의 볼트 내 전체 경로 (예: "folder/subfolder/note.md")
         const vaultPath = file.path;
         
-        if (basePath) {
-            return `${basePath}/${vaultPath}`;
-        }
-        return vaultPath;
+        // publicBasePath + blogContentPath + vaultPath
+        return this.getFullPath(
+            this.settings.publicBasePath,
+            this.settings.blogContentPath,
+            vaultPath
+        );
     }
 
     /**
      * 이미지 파일 경로 생성
+     * 예: src/site/img/user/첨부파일/image.png
      */
     private getAssetPath(assetPath: string): string {
-        const basePath = this.normalizePath(this.settings.blogAssetsPath);
-        
-        // 파일명만 추출 (경로 제거)
-        const fileName = assetPath.split('/').pop() || assetPath;
-        
-        if (basePath) {
-            return `${basePath}/${fileName}`;
-        }
-        return fileName;
+        // publicBasePath + blogAssetsPath + assetPath
+        return this.getFullPath(
+            this.settings.publicBasePath,
+            this.settings.blogAssetsPath,
+            assetPath
+        );
     }
 
     /**
@@ -176,46 +185,53 @@ export class GitHubPublisher {
 
     /**
      * 마크다운 내용에서 이미지 링크 변환
+     * GitHub에 저장될 때는 /src/site/img/user/... 형태
+     * Quartz 빌드 시 src/site가 루트가 되므로 img/user/...로 자동 변환됨
      */
     private transformImageLinks(content: string): string {
-        const assetsBasePath = this.normalizePath(this.settings.blogAssetsPath);
+        // 전체 경로: publicBasePath + blogAssetsPath
+        const fullAssetsPath = this.getFullPath(
+            this.settings.publicBasePath,
+            this.settings.blogAssetsPath
+        );
         
-        // ![[image.png]] 또는 ![[folder/image.png]] → ![image](/images/image.png)
+        // ![[image.png]] 또는 ![[첨부파일/image.png]] → ![첨부파일/image.png](/src/site/img/user/첨부파일/image.png)
         content = content.replace(/!\[\[([^\]]+)\]\]/g, (match, imagePath) => {
-            // 파일명만 추출
-            const fileName = imagePath.split('/').pop();
-            return `![${fileName}](/${assetsBasePath}/${fileName})`;
+            // URL 인코딩 (한글 등)
+            const encodedPath = imagePath.split('/').map((part : string) => encodeURIComponent(part)).join('/');
+            return `![${imagePath}](/${fullAssetsPath}/${encodedPath})`;
         });
         
-        // ![alt](image.png) 또는 ![alt](folder/image.png) → ![alt](/images/image.png)
+        // ![alt](image.png) 또는 ![alt](첨부파일/image.png) → ![alt](/src/site/img/user/첨부파일/image.png)
         content = content.replace(/!\[([^\]]*)\]\(([^\)]+)\)/g, (match, alt, imagePath) => {
             // 이미 절대 경로거나 URL이면 그대로 둠
             if (imagePath.startsWith('http') || imagePath.startsWith('/')) {
                 return match;
             }
-            // 파일명만 추출
-            const fileName = imagePath.split('/').pop();
-            return `![${alt}](/${assetsBasePath}/${fileName})`;
+            // URL 인코딩
+            const encodedPath = imagePath.split('/').map((part : string) => encodeURIComponent(part)).join('/');
+            return `![${alt}](/${fullAssetsPath}/${encodedPath})`;
         });
         
         return content;
     }
 
     /**
-     * 단일 파일 발행
+     * 단일 파일 발행 (이미지 포함)
      */
     async publishFile(file: TFile): Promise<boolean> {
         try {
-            console.log(`Publishing file: ${file.path}`);
+            console.log(`=== Publishing file: ${file.path} ===`);
             
+            // 1. 노트 내용 변환
             const content = await this.plugin.app.vault.read(file);
             const transformedContent = this.transformImageLinks(content);
             const encodedContent = btoa(unescape(encodeURIComponent(transformedContent)));
             
             const path = this.getFilePath(file);
-            console.log(`Target path: ${path}`);
+            console.log(`Target note path: ${path}`);
             
-            // 기존 파일이 있는지 확인
+            // 2. 노트 파일 업로드
             let sha: string | undefined;
             try {
                 const existingFile = await this.octokit.rest.repos.getContent({
@@ -227,17 +243,11 @@ export class GitHubPublisher {
                 
                 if ('sha' in existingFile.data) {
                     sha = existingFile.data.sha;
-                    console.log(`Existing file found, SHA: ${sha}`);
                 }
             } catch (error: any) {
-                if (error.status === 404) {
-                    console.log('File does not exist, creating new file');
-                } else {
-                    throw error;
-                }
+                if (error.status !== 404) throw error;
             }
 
-            // 파일 업로드/업데이트
             await this.octokit.rest.repos.createOrUpdateFileContents({
                 owner: this.settings.githubUsername,
                 repo: this.settings.githubRepo,
@@ -248,54 +258,104 @@ export class GitHubPublisher {
                 sha: sha
             });
 
-            // 이미지도 함께 업로드
-            const imageBlobs = await this.processImages(file);
-            for (const imageBlob of imageBlobs) {
+            console.log('✓ Note uploaded');
+
+            // 3. 이미지 추출
+            const imageLinks = this.extractImageLinks(content);
+            console.log(`Found ${imageLinks.length} image links:`, imageLinks);
+            
+            if (imageLinks.length === 0) {
+                new Notice(`✅ Published: ${file.basename}`);
+                return true;
+            }
+
+            // 4. 각 이미지 업로드
+            let uploadedCount = 0;
+            for (const imageName of imageLinks) {
                 try {
-                    // 기존 이미지가 있는지 확인
+                    console.log(`\n--- Processing image: ${imageName} ---`);
+                    
+                    // 이미지 파일 찾기
+                    const imageFile = this.plugin.app.metadataCache.getFirstLinkpathDest(
+                        imageName,
+                        file.path
+                    );
+                    
+                    if (!imageFile || !(imageFile instanceof TFile)) {
+                        console.warn(`Image not found: ${imageName}`);
+                        continue;
+                    }
+
+                    console.log(`Found image: ${imageFile.path}`);
+
+                    // GitHub 경로
+                    const imagePath = this.getAssetPath(imageFile.path);
+                    console.log(`Target image path: ${imagePath}`);
+
+                    // 이미지 읽기
+                    const imageData = await this.plugin.app.vault.readBinary(imageFile);
+                    const base64Data = this.arrayBufferToBase64(imageData);
+                    console.log(`Image size: ${imageData.byteLength} bytes, base64 length: ${base64Data.length}`);
+
+                    // 기존 이미지 확인
                     let imageSha: string | undefined;
                     try {
                         const existingImage = await this.octokit.rest.repos.getContent({
                             owner: this.settings.githubUsername,
                             repo: this.settings.githubRepo,
-                            path: imageBlob.path,
+                            path: imagePath,
                             ref: this.settings.githubBranch
                         });
                         
                         if ('sha' in existingImage.data) {
                             imageSha = existingImage.data.sha;
+                            console.log(`Existing image SHA: ${imageSha}`);
                         }
                     } catch (error: any) {
-                        if (error.status !== 404) throw error;
+                        if (error.status === 404) {
+                            console.log('New image, no existing SHA');
+                        } else {
+                            console.error('Error checking existing image:', error);
+                            throw error;
+                        }
                     }
 
-                    // 이미지는 이미 blob으로 생성했으므로, 직접 tree API를 사용하거나
-                    // 간단히 createOrUpdateFileContents 사용
-                    // 여기서는 간단하게 처리 (배치 업로드에서 최적화됨)
-                } catch (error) {
-                    console.error(`Error uploading image ${imageBlob.path}:`, error);
+                    // 이미지 업로드
+                    console.log('Uploading to GitHub...');
+                    const uploadResult = await this.octokit.rest.repos.createOrUpdateFileContents({
+                        owner: this.settings.githubUsername,
+                        repo: this.settings.githubRepo,
+                        path: imagePath,
+                        message: `Upload image: ${imageFile.name}`,
+                        content: base64Data,
+                        branch: this.settings.githubBranch,
+                        sha: imageSha
+                    });
+
+                    console.log(`✅ Image uploaded: ${imagePath}`, uploadResult.data);
+                    uploadedCount++;
+                } catch (error: any) {
+                    console.error(`❌ Failed to upload image: ${imageName}`);
+                    console.error('Error:', error.message);
+                    console.error('Status:', error.status);
+                    console.error('Response:', error.response?.data);
                 }
             }
 
-            new Notice(`✅ Published: ${file.basename}`);
+            const message = `✅ Published: ${file.basename} (${uploadedCount}/${imageLinks.length} images uploaded)`;
+            console.log(message);
+            new Notice(message);
             return true;
         } catch (error: any) {
-            console.error('Publish error:', error);
+            console.error('=== Publish failed ===');
+            console.error('Error:', error.message);
+            console.error('Status:', error.status);
+            console.error('Response:', error.response?.data);
             
-            let errorMessage = `Failed to publish: ${file.basename}`;
-            if (error.status === 401) {
-                errorMessage = '❌ Authentication failed. Check your GitHub token.';
-            } else if (error.status === 404) {
-                errorMessage = '❌ Repository not found.';
-            } else if (error.message) {
-                errorMessage = `❌ ${error.message}`;
-            }
-            
-            new Notice(errorMessage);
+            new Notice(`❌ Failed to publish: ${file.basename}`);
             return false;
         }
     }
-
     /**
      * 여러 파일 배치 발행 (노트 + 이미지)
      */
