@@ -217,133 +217,107 @@ export class GitHubPublisher {
     }
 
     /**
-     * 단일 파일 발행 (이미지 포함)
+     * 단일 파일 발행 (이미지 포함) - Git Tree API 사용으로 1개 커밋
      */
     async publishFile(file: TFile): Promise<boolean> {
         try {
             console.log(`=== Publishing file: ${file.path} ===`);
             
-            // 1. 노트 내용 변환
+            // 1. 최신 커밋 가져오기
+            let latestCommitSha: string;
+            let baseTreeSha: string | undefined;
+
+            try {
+                const { data: refData } = await this.octokit.rest.git.getRef({
+                    owner: this.settings.githubUsername,
+                    repo: this.settings.githubRepo,
+                    ref: `heads/${this.settings.githubBranch}`
+                });
+
+                latestCommitSha = refData.object.sha;
+
+                const { data: commitData } = await this.octokit.rest.git.getCommit({
+                    owner: this.settings.githubUsername,
+                    repo: this.settings.githubRepo,
+                    commit_sha: latestCommitSha
+                });
+
+                baseTreeSha = commitData.tree.sha;
+            } catch (error: any) {
+                if (error.status === 404) {
+                    console.log('Repository is empty, creating initial commit...');
+                    return await this.createInitialCommit([file]);
+                }
+                throw error;
+            }
+
+            // 2. 노트 blob 생성
             const content = await this.plugin.app.vault.read(file);
             const transformedContent = this.transformImageLinks(content);
             const encodedContent = btoa(unescape(encodeURIComponent(transformedContent)));
-            
-            const path = this.getFilePath(file);
-            console.log(`Target note path: ${path}`);
-            
-            // 2. 노트 파일 업로드
-            let sha: string | undefined;
-            try {
-                const existingFile = await this.octokit.rest.repos.getContent({
-                    owner: this.settings.githubUsername,
-                    repo: this.settings.githubRepo,
-                    path: path,
-                    ref: this.settings.githubBranch
-                });
-                
-                if ('sha' in existingFile.data) {
-                    sha = existingFile.data.sha;
-                }
-            } catch (error: any) {
-                if (error.status !== 404) throw error;
-            }
 
-            await this.octokit.rest.repos.createOrUpdateFileContents({
+            const { data: noteBlobData } = await this.octokit.rest.git.createBlob({
                 owner: this.settings.githubUsername,
                 repo: this.settings.githubRepo,
-                path: path,
-                message: `Publish: ${file.basename}`,
                 content: encodedContent,
-                branch: this.settings.githubBranch,
-                sha: sha
+                encoding: 'base64'
             });
 
-            console.log('✓ Note uploaded');
+            const noteBlob: FileBlob = {
+                path: this.getFilePath(file),
+                mode: '100644',
+                type: 'blob',
+                sha: noteBlobData.sha
+            };
 
-            // 3. 이미지 추출
-            const imageLinks = this.extractImageLinks(content);
-            console.log(`Found ${imageLinks.length} image links:`, imageLinks);
+            console.log(`✓ Note blob created: ${noteBlob.path}`);
+
+            // 3. 이미지 blobs 생성
+            const imageBlobs = await this.processImages(file);
+            console.log(`✓ Created ${imageBlobs.length} image blobs`);
+
+            // 4. 모든 blob 합치기
+            const allBlobs = [noteBlob, ...imageBlobs];
+
+            // 5. 새로운 트리 생성
+            const { data: newTree } = await this.octokit.rest.git.createTree({
+                owner: this.settings.githubUsername,
+                repo: this.settings.githubRepo,
+                base_tree: baseTreeSha,
+                tree: allBlobs
+            });
+
+            console.log(`✓ Tree created with SHA: ${newTree.sha}`);
+
+            // 6. 커밋 생성
+            const commitMessage = imageBlobs.length > 0 
+                ? `Publish: ${file.basename} (with ${imageBlobs.length} image(s))`
+                : `Publish: ${file.basename}`;
+
+            const { data: newCommit } = await this.octokit.rest.git.createCommit({
+                owner: this.settings.githubUsername,
+                repo: this.settings.githubRepo,
+                message: commitMessage,
+                tree: newTree.sha,
+                parents: [latestCommitSha]
+            });
+
+            console.log(`✓ Commit created with SHA: ${newCommit.sha}`);
+
+            // 7. 브랜치 업데이트
+            await this.octokit.rest.git.updateRef({
+                owner: this.settings.githubUsername,
+                repo: this.settings.githubRepo,
+                ref: `heads/${this.settings.githubBranch}`,
+                sha: newCommit.sha
+            });
+
+            console.log(`✓ Branch updated successfully`);
+
+            const message = imageBlobs.length > 0 
+                ? `✅ Published: ${file.basename} (${imageBlobs.length} images)`
+                : `✅ Published: ${file.basename}`;
             
-            if (imageLinks.length === 0) {
-                new Notice(`✅ Published: ${file.basename}`);
-                return true;
-            }
-
-            // 4. 각 이미지 업로드
-            let uploadedCount = 0;
-            for (const imageName of imageLinks) {
-                try {
-                    console.log(`\n--- Processing image: ${imageName} ---`);
-                    
-                    // 이미지 파일 찾기
-                    const imageFile = this.plugin.app.metadataCache.getFirstLinkpathDest(
-                        imageName,
-                        file.path
-                    );
-                    
-                    if (!imageFile || !(imageFile instanceof TFile)) {
-                        console.warn(`Image not found: ${imageName}`);
-                        continue;
-                    }
-
-                    console.log(`Found image: ${imageFile.path}`);
-
-                    // GitHub 경로
-                    const imagePath = this.getAssetPath(imageFile.path);
-                    console.log(`Target image path: ${imagePath}`);
-
-                    // 이미지 읽기
-                    const imageData = await this.plugin.app.vault.readBinary(imageFile);
-                    const base64Data = this.arrayBufferToBase64(imageData);
-                    console.log(`Image size: ${imageData.byteLength} bytes, base64 length: ${base64Data.length}`);
-
-                    // 기존 이미지 확인
-                    let imageSha: string | undefined;
-                    try {
-                        const existingImage = await this.octokit.rest.repos.getContent({
-                            owner: this.settings.githubUsername,
-                            repo: this.settings.githubRepo,
-                            path: imagePath,
-                            ref: this.settings.githubBranch
-                        });
-                        
-                        if ('sha' in existingImage.data) {
-                            imageSha = existingImage.data.sha;
-                            console.log(`Existing image SHA: ${imageSha}`);
-                        }
-                    } catch (error: any) {
-                        if (error.status === 404) {
-                            console.log('New image, no existing SHA');
-                        } else {
-                            console.error('Error checking existing image:', error);
-                            throw error;
-                        }
-                    }
-
-                    // 이미지 업로드
-                    console.log('Uploading to GitHub...');
-                    const uploadResult = await this.octokit.rest.repos.createOrUpdateFileContents({
-                        owner: this.settings.githubUsername,
-                        repo: this.settings.githubRepo,
-                        path: imagePath,
-                        message: `Upload image: ${imageFile.name}`,
-                        content: base64Data,
-                        branch: this.settings.githubBranch,
-                        sha: imageSha
-                    });
-
-                    console.log(`✅ Image uploaded: ${imagePath}`, uploadResult.data);
-                    uploadedCount++;
-                } catch (error: any) {
-                    console.error(`❌ Failed to upload image: ${imageName}`);
-                    console.error('Error:', error.message);
-                    console.error('Status:', error.status);
-                    console.error('Response:', error.response?.data);
-                }
-            }
-
-            const message = `✅ Published: ${file.basename} (${uploadedCount}/${imageLinks.length} images uploaded)`;
-            console.log(message);
             new Notice(message);
             return true;
         } catch (error: any) {
@@ -356,6 +330,7 @@ export class GitHubPublisher {
             return false;
         }
     }
+
     /**
      * 여러 파일 배치 발행 (노트 + 이미지)
      */
@@ -559,21 +534,18 @@ export class GitHubPublisher {
     }
 
     /**
-     * 여러 파일 삭제 (배치) - 완전 개선 버전
+     * 여러 파일 삭제 (배치)
      */
     async deleteFiles(files: TFile[]): Promise<boolean> {
         try {
             console.log(`=== Starting deletion of ${files.length} files ===`);
             
-            // 삭제할 파일 경로 미리 계산
             const pathsToDelete = files.map(file => {
                 const path = this.getFilePath(file);
                 console.log(`Will delete: ${file.path} -> ${path}`);
                 return path;
             });
 
-            // 1. 최신 커밋 가져오기
-            console.log('Step 1: Getting latest commit...');
             const { data: refData } = await this.octokit.rest.git.getRef({
                 owner: this.settings.githubUsername,
                 repo: this.settings.githubRepo,
@@ -581,10 +553,7 @@ export class GitHubPublisher {
             });
 
             const latestCommitSha = refData.object.sha;
-            console.log(`Latest commit SHA: ${latestCommitSha}`);
 
-            // 2. 커밋의 트리 가져오기
-            console.log('Step 2: Getting commit tree...');
             const { data: commitData } = await this.octokit.rest.git.getCommit({
                 owner: this.settings.githubUsername,
                 repo: this.settings.githubRepo,
@@ -592,10 +561,7 @@ export class GitHubPublisher {
             });
 
             const baseTreeSha = commitData.tree.sha;
-            console.log(`Base tree SHA: ${baseTreeSha}`);
 
-            // 3. 전체 트리 가져오기 (recursive)
-            console.log('Step 3: Getting full tree...');
             const { data: currentTree } = await this.octokit.rest.git.getTree({
                 owner: this.settings.githubUsername,
                 repo: this.settings.githubRepo,
@@ -603,75 +569,24 @@ export class GitHubPublisher {
                 recursive: '1'
             });
 
-            console.log(`Current tree has ${currentTree.tree.length} items`);
-            
-            // blob만 필터링 (tree 타입 제외)
             const currentBlobs = currentTree.tree.filter(item => item.type === 'blob');
-            console.log(`Current tree has ${currentBlobs.length} blobs (files)`);
             
-            // 삭제 대상 파일이 실제로 존재하는지 확인
-            const filesToDelete = currentBlobs.filter(item => 
-                pathsToDelete.includes(item.path || '')
-            );
-            console.log(`Found ${filesToDelete.length} files to delete:`, 
-                filesToDelete.map(f => f.path));
-
-            if (filesToDelete.length === 0) {
-                console.error('⚠️ No matching files found in repository');
-                console.log('Paths to delete:', pathsToDelete);
-                console.log('Sample blob paths:', currentBlobs.slice(0, 5).map(b => b.path));
-                new Notice('⚠️ Files not found in repository');
-                return false;
-            }
-
-            // 4. 삭제할 파일을 제외한 새 트리 아이템 생성 (blob만)
-            console.log('Step 4: Creating new tree without deleted files...');
             const newTreeItems = currentBlobs
-                .filter(item => {
-                    const shouldKeep = !pathsToDelete.includes(item.path || '');
-                    if (!shouldKeep) {
-                        console.log(`  ✓ Removing: ${item.path}`);
-                    }
-                    return shouldKeep;
-                })
+                .filter(item => !pathsToDelete.includes(item.path || ''))
                 .map(item => ({
                     path: item.path!,
-                    mode: '100644' as const, // blob는 항상 100644
+                    mode: '100644' as const,
                     type: 'blob' as const,
                     sha: item.sha!
                 }));
 
-            const removedCount = currentBlobs.length - newTreeItems.length;
-            console.log(`New tree will have ${newTreeItems.length} blobs (removed ${removedCount})`);
-            console.log(`First 3 items in new tree:`, newTreeItems.slice(0, 3).map(i => i.path));
-
-            if (removedCount === 0) {
-                console.error('⚠️ WARNING: No files were actually removed!');
-                new Notice('⚠️ Files not found in repository.');
-                return false;
-            }
-
-            // 5. 새 트리 생성
-            console.log('Step 5: Creating new tree on GitHub...');
             const { data: newTree } = await this.octokit.rest.git.createTree({
                 owner: this.settings.githubUsername,
                 repo: this.settings.githubRepo,
                 tree: newTreeItems
             });
 
-            console.log(`✓ New tree created with SHA: ${newTree.sha}`);
-            
-            if (newTree.sha === baseTreeSha) {
-                console.error('⚠️ ERROR: New tree SHA is the same as base tree!');
-                console.error('Tree items count:', newTreeItems.length);
-                console.error('Original blobs count:', currentBlobs.length);
-                new Notice('❌ Failed to create modified tree');
-                return false;
-            }
-
-            // 6. 새 커밋 생성
-            console.log('Step 6: Creating commit...');
-            const commitMessage = `Unpublish ${files.length} note(s) from Obsidian\n\nDeleted:\n${pathsToDelete.map(p => `- ${p}`).join('\n')}`;
+            const commitMessage = `Unpublish ${files.length} note(s) from Obsidian`;
             const { data: newCommit } = await this.octokit.rest.git.createCommit({
                 owner: this.settings.githubUsername,
                 repo: this.settings.githubRepo,
@@ -680,10 +595,6 @@ export class GitHubPublisher {
                 parents: [latestCommitSha]
             });
 
-            console.log(`✓ Commit created with SHA: ${newCommit.sha}`);
-
-            // 7. 브랜치 업데이트
-            console.log('Step 7: Updating branch reference...');
             await this.octokit.rest.git.updateRef({
                 owner: this.settings.githubUsername,
                 repo: this.settings.githubRepo,
@@ -691,49 +602,10 @@ export class GitHubPublisher {
                 sha: newCommit.sha
             });
 
-            console.log(`✓ Branch updated successfully`);
-            console.log(`  Old commit: ${latestCommitSha}`);
-            console.log(`  New commit: ${newCommit.sha}`);
-
-            // 8. GitHub 처리 대기
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // 9. 검증
-            console.log('Step 8: Verifying deletion...');
-            try {
-                const { data: updatedTree } = await this.octokit.rest.git.getTree({
-                    owner: this.settings.githubUsername,
-                    repo: this.settings.githubRepo,
-                    tree_sha: newCommit.sha,
-                    recursive: '1'
-                });
-                
-                const remainingBlobs = updatedTree.tree.filter(item => item.type === 'blob');
-                console.log(`Updated tree has ${remainingBlobs.length} blobs`);
-                
-                const stillExists = pathsToDelete.filter(path => 
-                    remainingBlobs.some(blob => blob.path === path)
-                );
-                
-                if (stillExists.length > 0) {
-                    console.warn('⚠️ Files still exist:', stillExists);
-                } else {
-                    console.log('✓ All files successfully removed from tree');
-                }
-            } catch (error) {
-                console.error('Verification error:', error);
-            }
-
-            console.log('=== ✅ Deletion completed successfully ===');
+            new Notice(`✅ Unpublished ${files.length} notes`);
             return true;
         } catch (error: any) {
-            console.error('❌ Batch delete error:', error);
-            console.error('Error details:', {
-                message: error.message,
-                status: error.status,
-                response: error.response?.data
-            });
-            
+            console.error('Delete error:', error);
             new Notice(`❌ Delete failed: ${error.message}`);
             return false;
         }
@@ -743,46 +615,10 @@ export class GitHubPublisher {
      * 단일 파일 삭제
      */
     async deleteFile(file: TFile): Promise<boolean> {
-        try {
-            const path = this.getFilePath(file);
-            console.log(`Deleting single file: ${path}`);
-
-            // 파일 정보 가져오기
-            const { data: fileData } = await this.octokit.rest.repos.getContent({
-                owner: this.settings.githubUsername,
-                repo: this.settings.githubRepo,
-                path: path,
-                ref: this.settings.githubBranch
-            });
-
-            if (Array.isArray(fileData) || fileData.type !== 'file') {
-                console.error('Not a file:', path);
-                return false;
-            }
-
-            // 파일 삭제
-            await this.octokit.rest.repos.deleteFile({
-                owner: this.settings.githubUsername,
-                repo: this.settings.githubRepo,
-                path: path,
-                message: `Unpublish: ${file.basename}`,
-                sha: fileData.sha,
-                branch: this.settings.githubBranch
-            });
-
-            console.log(`✅ Deleted: ${path}`);
-            return true;
-        } catch (error: any) {
-            console.error('Delete error:', error);
-            if (error.status === 404) {
-                console.log(`File not found: ${this.getFilePath(file)}`);
-            }
-            return false;
-        }
+        return await this.deleteFiles([file]);
     }
 
     async testConnection(): Promise<boolean> {
-        // 기존 코드 유지
         try {
             await this.octokit.rest.repos.get({
                 owner: this.settings.githubUsername,
