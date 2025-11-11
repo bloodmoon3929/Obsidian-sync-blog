@@ -583,18 +583,30 @@ export class PublicationCenterModal extends Modal {
             }
         }
 
+        // Modal을 닫고 백그라운드에서 실행
+        this.close();
+        new Notice(`📤 Publishing ${selectedFiles.length} notes in background...`);
+
+        // 백그라운드 작업 시작
+        this.publishInBackground(selectedFiles);
+    }
+
+    private async publishInBackground(files: TFile[]) {
+        let successCount = 0;
+        const total = files.length;
+
         try {
-            this.showProgress(0, selectedFiles.length, 'Preparing to publish');
-            
-            let successCount = 0;
-            for (let i = 0; i < selectedFiles.length; i++) {
-                const file = selectedFiles[i];
-                this.showProgress(i + 1, selectedFiles.length, `Publishing ${file.basename}`);
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                
+                // Status Bar 업데이트
+                this.plugin.statusBar.setProgress(i + 1, total, file.basename);
                 
                 try {
-                    await this.publisher.publishFile(file);
+                    await this.publisher!.publishFile(file);
                     successCount++;
                     
+                    // 발행 정보 저장
                     const hash = await this.getFileHash(file);
                     const publishedNotes = this.plugin.settings.publishedNotes || {};
                     publishedNotes[file.path] = {
@@ -608,16 +620,26 @@ export class PublicationCenterModal extends Modal {
                 }
             }
 
-            this.hideProgress();
-            new Notice(`✅ Successfully published ${successCount}/${selectedFiles.length} notes!`);
+            // 완료
+            this.plugin.statusBar.setStatus('success', `${successCount}/${total} published`);
+            new Notice(`✅ Successfully published ${successCount}/${total} notes!`);
             
-            await this.analyzeNotes();
-            this.selectedNotes.clear();
-            this.close();
+            // 3초 후 idle 상태로
+            setTimeout(() => {
+                this.plugin.statusBar.setStatus('idle');
+                this.plugin.statusBar.clearProgress();
+            }, 3000);
+            
         } catch (error) {
-            this.hideProgress();
             console.error('Publish error:', error);
+            this.plugin.statusBar.setStatus('error', 'Failed');
             new Notice(`❌ Failed to publish: ${error.message}`);
+            
+            // 5초 후 idle 상태로
+            setTimeout(() => {
+                this.plugin.statusBar.setStatus('idle');
+                this.plugin.statusBar.clearProgress();
+            }, 5000);
         }
     }
 

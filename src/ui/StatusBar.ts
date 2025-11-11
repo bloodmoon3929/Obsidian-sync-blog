@@ -8,6 +8,7 @@ export class BlogSyncStatusBar {
 	private statusBarItem: HTMLElement;
 	private status: SyncStatus = 'idle';
 	private currentFile: string = '';
+	private progress: { current: number; total: number } | null = null;
 
 	constructor(private plugin: Plugin) {
 		this.statusBarItem = this.plugin.addStatusBarItem();
@@ -22,6 +23,27 @@ export class BlogSyncStatusBar {
 		if (file) {
 			this.currentFile = file;
 		}
+		this.updateStatusBar();
+	}
+
+	/**
+	 * 진행도와 함께 상태 업데이트
+	 */
+	setProgress(current: number, total: number, file?: string): void {
+		this.status = 'syncing';
+		this.progress = { current, total };
+		if (file) {
+			this.currentFile = file;
+		}
+		this.updateStatusBar();
+	}
+
+	/**
+	 * 진행도 초기화
+	 */
+	clearProgress(): void {
+		this.progress = null;
+		this.currentFile = '';
 		this.updateStatusBar();
 	}
 
@@ -71,6 +93,13 @@ export class BlogSyncStatusBar {
 			case 'idle':
 				return 'Blog: Ready';
 			case 'syncing':
+				if (this.progress) {
+					const progressText = `${this.progress.current}/${this.progress.total}`;
+					if (this.currentFile) {
+						return `Blog: Publishing ${progressText} - ${this.currentFile}`;
+					}
+					return `Blog: Publishing ${progressText}`;
+				}
 				return `Blog: Syncing${this.currentFile ? ` ${this.currentFile}` : ''}...`;
 			case 'success':
 				return `Blog: Synced${this.currentFile ? ` ${this.currentFile}` : ''}`;

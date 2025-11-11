@@ -1,5 +1,7 @@
 // src/types/settings.ts
 
+export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
+
 export interface PublishedNoteInfo {
     hash: string;
     timestamp: number;
