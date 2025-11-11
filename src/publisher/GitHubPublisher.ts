@@ -304,12 +304,13 @@ export class GitHubPublisher {
 
             console.log(`✓ Commit created with SHA: ${newCommit.sha}`);
 
-            // 7. 브랜치 업데이트
+            // 7. 브랜치 업데이트 (강제)
             await this.octokit.rest.git.updateRef({
                 owner: this.settings.githubUsername,
                 repo: this.settings.githubRepo,
                 ref: `heads/${this.settings.githubBranch}`,
-                sha: newCommit.sha
+                sha: newCommit.sha,
+                force: true
             });
 
             console.log(`✓ Branch updated successfully`);
@@ -428,12 +429,13 @@ export class GitHubPublisher {
                 parents: [latestCommitSha]
             });
 
-            // 브랜치 업데이트
+            // 브랜치 업데이트 (강제)
             await this.octokit.rest.git.updateRef({
                 owner: this.settings.githubUsername,
                 repo: this.settings.githubRepo,
                 ref: `heads/${this.settings.githubBranch}`,
-                sha: newCommit.sha
+                sha: newCommit.sha,
+                force: true
             });
 
             new Notice(`✅ Published ${files.length} notes and ${uniqueImageBlobs.length} images!`);
@@ -517,7 +519,8 @@ export class GitHubPublisher {
                         owner: this.settings.githubUsername,
                         repo: this.settings.githubRepo,
                         ref: `heads/${this.settings.githubBranch}`,
-                        sha: newCommit.sha
+                        sha: newCommit.sha,
+                        force: true
                     });
                 } else {
                     throw error;
@@ -599,7 +602,8 @@ export class GitHubPublisher {
                 owner: this.settings.githubUsername,
                 repo: this.settings.githubRepo,
                 ref: `heads/${this.settings.githubBranch}`,
-                sha: newCommit.sha
+                sha: newCommit.sha,
+                force: true
             });
 
             new Notice(`✅ Unpublished ${files.length} notes`);
