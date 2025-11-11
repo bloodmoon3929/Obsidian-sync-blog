@@ -591,38 +591,59 @@ export class PublicationCenterModal extends Modal {
         this.publishInBackground(selectedFiles);
     }
 
+    // 이 메서드를 새로 추가
     private async publishInBackground(files: TFile[]) {
-        let successCount = 0;
         const total = files.length;
 
         try {
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
+            // 단일 파일
+            if (files.length === 1) {
+                const file = files[0];
+                this.plugin.statusBar.setProgress(1, 1, file.basename);
                 
-                // Status Bar 업데이트
-                this.plugin.statusBar.setProgress(i + 1, total, file.basename);
+                await this.publisher!.publishFile(file);
                 
-                try {
-                    await this.publisher!.publishFile(file);
-                    successCount++;
-                    
-                    // 발행 정보 저장
-                    const hash = await this.getFileHash(file);
-                    const publishedNotes = this.plugin.settings.publishedNotes || {};
-                    publishedNotes[file.path] = {
-                        hash: hash,
-                        timestamp: Date.now()
-                    };
-                    this.plugin.settings.publishedNotes = publishedNotes;
+                // 발행 정보 저장
+                const hash = await this.getFileHash(file);
+                const publishedNotes = this.plugin.settings.publishedNotes || {};
+                publishedNotes[file.path] = {
+                    hash: hash,
+                    timestamp: Date.now()
+                };
+                this.plugin.settings.publishedNotes = publishedNotes;
+                await this.plugin.saveSettings();
+                
+                // 완료
+                this.plugin.statusBar.setStatus('success', '1 published');
+                new Notice(`✅ Successfully published: ${file.basename}`);
+            } 
+            // 여러 파일 - 배치 발행 (1개 커밋)
+            else {
+                this.plugin.statusBar.setProgress(0, total, 'Publishing batch...');
+                
+                // 배치로 한 번에 발행
+                const success = await this.publisher!.publishFiles(files);
+                
+                if (success) {
+                    // 모든 파일의 발행 정보 저장
+                    for (const file of files) {
+                        const hash = await this.getFileHash(file);
+                        const publishedNotes = this.plugin.settings.publishedNotes || {};
+                        publishedNotes[file.path] = {
+                            hash: hash,
+                            timestamp: Date.now()
+                        };
+                        this.plugin.settings.publishedNotes = publishedNotes;
+                    }
                     await this.plugin.saveSettings();
-                } catch (error) {
-                    console.error(`Failed to publish ${file.basename}:`, error);
+                    
+                    // 완료
+                    this.plugin.statusBar.setStatus('success', `${total} published`);
+                    new Notice(`✅ Successfully published ${total} notes!`);
+                } else {
+                    throw new Error('Batch publish failed');
                 }
             }
-
-            // 완료
-            this.plugin.statusBar.setStatus('success', `${successCount}/${total} published`);
-            new Notice(`✅ Successfully published ${successCount}/${total} notes!`);
             
             // 3초 후 idle 상태로
             setTimeout(() => {
