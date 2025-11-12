@@ -528,6 +528,22 @@ export class PublicationCenterModal extends Modal {
                 });
             }
         }
+
+        const currentFilePaths = new Set(allFiles.map(f => f.path));
+        for (const path in publishedNotes) {
+            if (!currentFilePaths.has(path)) {
+                // 삭제된 파일을 가상으로 생성
+                this.notes.push({
+                    file: {
+                        path: path,
+                        basename: path.split('/').pop()?.replace('.md', '') || path,
+                        name: path.split('/').pop() || path
+                    } as TFile,
+                    status: 'deleted',
+                    lastPublished: publishedNotes[path].timestamp
+                });
+            }
+        }
     }
 
     private async getFileHash(file: TFile): Promise<string> {
