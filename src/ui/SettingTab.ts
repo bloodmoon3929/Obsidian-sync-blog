@@ -50,13 +50,25 @@ export class BlogSyncSettingTab extends PluginSettingTab {
         containerEl.createEl('h3', { text: 'Publish Target' });
 
         new Setting(containerEl)
+            .setName('Custom Domain')
+            .setDesc('블로그 커스텀 도메인 (예: blog.example.com)')
+            .addText(text => text
+                .setPlaceholder('blog.example.com')
+                .setValue(this.plugin.settings.customDomain)
+                .onChange(async (value) => {
+                    this.plugin.settings.customDomain = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
             .setName('Publish to')
             .setDesc('노트를 발행할 대상을 선택하세요')
             .addDropdown(dropdown => dropdown
                 .addOption('github', 'GitHub Repository')
                 .addOption('server', 'Personal Server (FTP/SFTP)')
+                .addOption('both', 'Both (GitHub + Server)') 
                 .setValue(this.plugin.settings.publishTarget)
-                .onChange(async (value: 'github' | 'server') => {
+                .onChange(async (value: 'github' | 'server'|'both') => {
                     this.plugin.settings.publishTarget = value;
                     await this.plugin.saveSettings();
                     this.display(); // UI 새로고침
@@ -65,14 +77,16 @@ export class BlogSyncSettingTab extends PluginSettingTab {
         // ============================================
         // GitHub 설정
         // ============================================
-        if (this.plugin.settings.publishTarget === 'github') {
+        if (this.plugin.settings.publishTarget === 'github' || 
+            this.plugin.settings.publishTarget === 'both') {
             this.displayGitHubSettings(containerEl);
         }
 
         // ============================================
         // 서버 설정
         // ============================================
-        if (this.plugin.settings.publishTarget === 'server') {
+        if (this.plugin.settings.publishTarget === 'server' || 
+            this.plugin.settings.publishTarget === 'both') {
             this.displayServerSettings(containerEl);
         }
     }

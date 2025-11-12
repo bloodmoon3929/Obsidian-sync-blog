@@ -13,7 +13,8 @@ export interface BlogSyncSettings {
     showNotifications: boolean;
     
     // 발행 설정
-    publishTarget: 'github' | 'server';
+    publishTarget: 'github' | 'server' | 'both';
+    customDomain: string;  // 커스텀 도메인 (예: blog.example.com)
     
     // GitHub 설정
     githubToken: string;
@@ -39,6 +40,7 @@ export const DEFAULT_SETTINGS: BlogSyncSettings = {
     showNotifications: true,
     
     publishTarget: 'github',
+    customDomain: '',
     
     githubToken: '',
     githubUsername: '',
