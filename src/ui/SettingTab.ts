@@ -65,7 +65,7 @@ export class BlogSyncSettingTab extends PluginSettingTab {
             .setDesc('노트를 발행할 대상을 선택하세요')
             .addDropdown(dropdown => dropdown
                 .addOption('github', 'GitHub Repository')
-                .addOption('server', 'Personal Server (FTP/SFTP)')
+                .addOption('server', 'Personal Server')
                 .addOption('both', 'Both (GitHub + Server)') 
                 .setValue(this.plugin.settings.publishTarget)
                 .onChange(async (value: 'github' | 'server'|'both') => {
@@ -252,100 +252,164 @@ export class BlogSyncSettingTab extends PluginSettingTab {
     private displayServerSettings(containerEl: HTMLElement): void {
         containerEl.createEl('h3', { text: '🖥️ Server Settings' });
 
-        // Server Type
+        // ============================================
+        // 로컬 서버 (OMV) 설정
+        // ============================================
+        containerEl.createEl('h4', { text: '📁 Local Server (OMV/SMB)' });
+
         new Setting(containerEl)
-            .setName('Server Type')
-            .setDesc('서버 연결 방식')
-            .addDropdown(dropdown => dropdown
-                .addOption('sftp', 'SFTP (SSH File Transfer)')
-                .addOption('ftp', 'FTP (File Transfer Protocol)')
-                .setValue(this.plugin.settings.serverType)
-                .onChange(async (value: 'ftp' | 'sftp') => {
-                    this.plugin.settings.serverType = value;
+            .setName('Enable Local Server')
+            .setDesc('로컬 서버로 파일 복사 활성화 (SMB 공유 폴더)')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.enableLocalServer)
+                .onChange(async (value) => {
+                    this.plugin.settings.enableLocalServer = value;
                     await this.plugin.saveSettings();
                     this.display();
                 }));
 
-        // Server Host
-        new Setting(containerEl)
-            .setName('Server Host')
-            .setDesc('서버 주소 또는 IP')
-            .addText(text => text
-                .setPlaceholder('example.com or 192.168.1.100')
-                .setValue(this.plugin.settings.serverHost)
-                .onChange(async (value) => {
-                    this.plugin.settings.serverHost = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        // Server Port
-        new Setting(containerEl)
-            .setName('Server Port')
-            .setDesc(this.plugin.settings.serverType === 'sftp' ? 'SFTP 포트 (기본: 22)' : 'FTP 포트 (기본: 21)')
-            .addText(text => text
-                .setPlaceholder(this.plugin.settings.serverType === 'sftp' ? '22' : '21')
-                .setValue(String(this.plugin.settings.serverPort))
-                .onChange(async (value) => {
-                    const port = parseInt(value);
-                    if (!isNaN(port)) {
-                        this.plugin.settings.serverPort = port;
-                        await this.plugin.saveSettings();
-                    }
-                }));
-
-        // Username
-        new Setting(containerEl)
-            .setName('Username')
-            .setDesc('서버 사용자 이름')
-            .addText(text => text
-                .setPlaceholder('username')
-                .setValue(this.plugin.settings.serverUsername)
-                .onChange(async (value) => {
-                    this.plugin.settings.serverUsername = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        // Password
-        new Setting(containerEl)
-            .setName('Password')
-            .setDesc('서버 비밀번호')
-            .addText(text => {
-                text
-                    .setPlaceholder('password')
-                    .setValue(this.plugin.settings.serverPassword)
+        if (this.plugin.settings.enableLocalServer) {
+            // Server Host
+            new Setting(containerEl)
+                .setName('Server Host/IP')
+                .setDesc('로컬 서버 주소 (예: 203.234.57.91, gnbupi.local)')
+                .addText(text => text
+                    .setPlaceholder('203.234.57.91')
+                    .setValue(this.plugin.settings.localServerHost)
                     .onChange(async (value) => {
-                        this.plugin.settings.serverPassword = value;
+                        this.plugin.settings.localServerHost = value;
                         await this.plugin.saveSettings();
-                    });
-                text.inputEl.type = 'password';
-                return text;
-            });
+                    }));
 
-        // Remote Path
+            // Server Port
+            new Setting(containerEl)
+                .setName('Server Port')
+                .setDesc('웹 서버 포트 (예: 2052)')
+                .addText(text => text
+                    .setPlaceholder('2052')
+                    .setValue(String(this.plugin.settings.localServerPort))
+                    .onChange(async (value) => {
+                        const port = parseInt(value);
+                        if (!isNaN(port)) {
+                            this.plugin.settings.localServerPort = port;
+                            await this.plugin.saveSettings();
+                        }
+                    }));
+
+            new Setting(containerEl)
+                .setName('Local Server Path')
+                .setDesc('SMB 공유 폴더 경로 (예: \\\\GNBUPI\\500gssd(1)\\quartz-blog)')
+                .addText(text => text
+                    .setPlaceholder('\\\\GNBUPI\\500gssd(1)\\quartz-blog')
+                    .setValue(this.plugin.settings.localServerPath)
+                    .onChange(async (value) => {
+                        this.plugin.settings.localServerPath = value;
+                        await this.plugin.saveSettings();
+                    }));
+
+            new Setting(containerEl)
+                .setName('Notes Path')
+                .setDesc('노트 파일 저장 경로 (로컬 서버 경로 기준, 예: src\\site\\notes)')
+                .addText(text => text
+                    .setPlaceholder('src\\site\\notes')
+                    .setValue(this.plugin.settings.localServerNotesPath)
+                    .onChange(async (value) => {
+                        this.plugin.settings.localServerNotesPath = value;
+                        await this.plugin.saveSettings();
+                    }));
+
+            new Setting(containerEl)
+                .setName('Assets Path')
+                .setDesc('이미지 파일 저장 경로 (로컬 서버 경로 기준, 예: src\\site\\img\\user)')
+                .addText(text => text
+                    .setPlaceholder('src\\site\\img\\user')
+                    .setValue(this.plugin.settings.localServerAssetsPath)
+                    .onChange(async (value) => {
+                        this.plugin.settings.localServerAssetsPath = value;
+                        await this.plugin.saveSettings();
+                    }));
+        }
+
+        // ============================================
+        // Webhook 설정
+        // ============================================
+        containerEl.createEl('h4', { text: '🔄 Webhook (Docker Restart)' });
+
         new Setting(containerEl)
-            .setName('Remote Path')
-            .setDesc('서버의 블로그 경로 (예: /var/www/blog)')
-            .addText(text => text
-                .setPlaceholder('/var/www/blog')
-                .setValue(this.plugin.settings.serverPath)
+            .setName('Enable Webhook')
+            .setDesc('파일 발행 후 Docker 재시작 Webhook 호출')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.enableWebhook)
                 .onChange(async (value) => {
-                    this.plugin.settings.serverPath = value;
+                    this.plugin.settings.enableWebhook = value;
                     await this.plugin.saveSettings();
+                    this.display();
                 }));
 
-        // Test Connection (서버용)
+        if (this.plugin.settings.enableWebhook) {
+            new Setting(containerEl)
+                .setName('Webhook URL')
+                .setDesc('Docker 재시작 Webhook URL (예: http://gnbupi.local:8099/restart-docker)')
+                .addText(text => text
+                    .setPlaceholder('http://gnbupi.local:8099/restart-docker')
+                    .setValue(this.plugin.settings.webhookUrl)
+                    .onChange(async (value) => {
+                        this.plugin.settings.webhookUrl = value;
+                        await this.plugin.saveSettings();
+                    }));
+
+            new Setting(containerEl)
+                .setName('Webhook Token')
+                .setDesc('인증 토큰 (선택사항)')
+                .addText(text => {
+                    text
+                        .setPlaceholder('your-secret-token')
+                        .setValue(this.plugin.settings.webhookToken)
+                        .onChange(async (value) => {
+                            this.plugin.settings.webhookToken = value;
+                            await this.plugin.saveSettings();
+                        });
+                    text.inputEl.type = 'password';
+                    return text;
+                });
+        }
+
+        // ============================================
+        // Test Connection
+        // ============================================
         new Setting(containerEl)
-            .setName('Test Connection')
-            .setDesc('서버 연결 테스트')
+            .setName('Test All Connections')
+            .setDesc('로컬 서버와 Webhook 연결 테스트')
             .addButton(button => button
-                .setButtonText('Test Connection')
+                .setButtonText('Test Connections')
                 .setCta()
                 .onClick(async () => {
-                    new Notice('서버 연결 기능은 곧 구현됩니다!');
-                    // TODO: 서버 연결 테스트 구현
+                    button.setDisabled(true);
+                    button.setButtonText('Testing...');
+                    
+                    try {
+                        const result = await this.plugin.publisher.testConnections();
+                        
+                        let message = '연결 테스트 결과:\n';
+                        message += `로컬 서버: ${result.localServer ? '✅' : '❌'}\n`;
+                        message += `Webhook: ${result.webhook ? '✅' : '❌'}`;
+                        
+                        new Notice(message);
+                        button.setButtonText(result.localServer && result.webhook ? '✅ Success' : '⚠️ Partial');
+                    } catch (error) {
+                        new Notice('Connection test failed: ' + error.message);
+                        button.setButtonText('❌ Failed');
+                    }
+                    
+                    setTimeout(() => {
+                        button.setDisabled(false);
+                        button.setButtonText('Test Connections');
+                    }, 3000);
                 }));
 
+        // ============================================
         // 설정 가이드
+        // ============================================
         const guideEl = containerEl.createDiv({ cls: 'setting-item-description' });
         guideEl.style.padding = '16px';
         guideEl.style.marginTop = '16px';
@@ -354,13 +418,11 @@ export class BlogSyncSettingTab extends PluginSettingTab {
         guideEl.style.backgroundColor = 'var(--background-secondary)';
         
         guideEl.createEl('h4', { text: '📖 Setup Guide' });
-        guideEl.createEl('p', { 
-            text: 'SFTP는 SSH 기반으로 더 안전하며, FTP보다 권장됩니다.' 
-        });
         guideEl.createEl('ol').innerHTML = `
-            <li>서버 접속 정보를 모두 입력하세요</li>
-            <li>"Test Connection" 버튼으로 연결을 확인하세요</li>
-            <li>Publication Center에서 노트를 선택하고 발행하세요</li>
+            <li><strong>로컬 서버:</strong> SMB 공유 폴더를 설정하세요 (예: \\\\GNBUPI\\500gssd(1)\\quartz-blog)</li>
+            <li><strong>서버 포트:</strong> 웹 접근 포트를 설정하세요 (예: 2052)</li>
+            <li><strong>Webhook:</strong> Docker 재시작 엔드포인트를 설정하세요 (예: http://gnbupi.local:8099/restart-docker)</li>
+            <li>"Test Connections" 버튼으로 연결을 확인하세요</li>
         `;
     }
 }

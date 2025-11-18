@@ -14,32 +14,38 @@ export interface BlogSyncSettings {
     
     // 발행 설정
     publishTarget: 'github' | 'server' | 'both';
-    customDomain: string;  // 커스텀 도메인 (예: blog.example.com)
+    customDomain: string;
     
     // GitHub 설정
     githubToken: string;
     githubUsername: string;
     githubRepo: string;
     githubBranch: string;
-    publicBasePath: string;   // 웹 퍼블리싱 기본 경로 (예: src/site)
-    blogContentPath: string;  // 노트가 저장될 경로 (예: notes)
-    blogAssetsPath: string;   // 이미지가 저장될 경로 (예: img/user)
+    publicBasePath: string;
+    blogContentPath: string;
+    blogAssetsPath: string;
     
-    // 서버 설정 (FTP/SFTP)
-    serverType: 'ftp' | 'sftp';
-    serverHost: string;
-    serverPort: number;
-    serverUsername: string;
-    serverPassword: string;
-    serverPath: string;
-	publishedNotes: Record<string, PublishedNoteInfo>;
+    // OMV 로컬 서버 설정
+    enableLocalServer: boolean;
+    localServerHost: string;  // 서버 IP/호스트: 203.234.57.91
+    localServerPort: number;  // 웹 포트: 2052
+    localServerPath: string;  // SMB 경로: \\GNBUPI\500gssd(1)\quartz-blog
+    localServerNotesPath: string;  // 노트 경로: src\site\notes
+    localServerAssetsPath: string;  // 이미지 경로: src\site\img\user
+    
+    // Webhook 설정
+    enableWebhook: boolean;
+    webhookUrl: string;  // http://gnbupi.local:8099/restart-docker
+    webhookToken: string;  // 인증 토큰
+    
+    publishedNotes: Record<string, PublishedNoteInfo>;
 }
 
 export const DEFAULT_SETTINGS: BlogSyncSettings = {
     blogFolderPath: '',
     showNotifications: true,
     
-    publishTarget: 'github',
+    publishTarget: 'both',
     customDomain: '',
     
     githubToken: '',
@@ -50,11 +56,16 @@ export const DEFAULT_SETTINGS: BlogSyncSettings = {
     blogContentPath: 'notes',
     blogAssetsPath: 'img/user',
     
-    serverType: 'sftp',
-    serverHost: '',
-    serverPort: 22,
-    serverUsername: '',
-    serverPassword: '',
-    serverPath: '',
-	publishedNotes: {}
+    enableLocalServer: false,
+    localServerHost: '203.234.57.91',
+    localServerPort: 2052,
+    localServerPath: '\\\\GNBUPI\\500gssd(1)\\quartz-blog',
+    localServerNotesPath: 'src\\site\\notes',
+    localServerAssetsPath: 'src\\site\\img\\user',
+    
+    enableWebhook: false,
+    webhookUrl: 'http://gnbupi.local:8099/restart-docker',
+    webhookToken: '',
+    
+    publishedNotes: {}
 };

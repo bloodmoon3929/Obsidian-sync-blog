@@ -2,7 +2,6 @@
 
 import { App, Modal, TFile, Notice, TFolder } from 'obsidian';
 import BlogSyncPlugin from '../../main';
-import { GitHubPublisher } from '../publisher/GitHubPublisher';
 
 interface NoteStatus {
     file: TFile;
@@ -23,7 +22,6 @@ export class PublicationCenterModal extends Modal {
     plugin: BlogSyncPlugin;
     notes: NoteStatus[] = [];
     selectedNotes: Set<string> = new Set();
-    private publisher: GitHubPublisher | null = null;
     private progressBar: HTMLElement | null = null;
     private progressText: HTMLElement | null = null;
     private folderTree: FolderNode;
@@ -39,18 +37,6 @@ export class PublicationCenterModal extends Modal {
             notes: [],
             subfolders: new Map()
         };
-        
-        if (this.plugin.settings.publishTarget === 'github') {
-            this.publisher = new GitHubPublisher(this.plugin, {
-                githubToken: this.plugin.settings.githubToken,
-                githubUsername: this.plugin.settings.githubUsername,
-                githubRepo: this.plugin.settings.githubRepo,
-                githubBranch: this.plugin.settings.githubBranch,
-                publicBasePath: this.plugin.settings.publicBasePath,
-                blogContentPath: this.plugin.settings.blogContentPath,
-                blogAssetsPath: this.plugin.settings.blogAssetsPath
-            });
-        }
     }
 
     async onOpen() {
@@ -74,24 +60,66 @@ export class PublicationCenterModal extends Modal {
             text: '📚 Publication Center',
             cls: 'publication-center-title' 
         });
-        
+
+        // Target Badge - both일 때는 모두 표시 (세로로 줄바꿈)
         const targetBadge = headerLeft.createDiv({ cls: 'publication-target-badge' });
-        if (this.plugin.settings.publishTarget === 'github') {
-            targetBadge.innerHTML = `🐙 GitHub: ${this.plugin.settings.githubUsername}/${this.plugin.settings.githubRepo}`;
-        } else {
-            targetBadge.innerHTML = `🖥️ Server: ${this.plugin.settings.serverHost}`;
+        const badgeItems: string[] = [];
+
+        if (this.plugin.settings.publishTarget === 'github' || this.plugin.settings.publishTarget === 'both') {
+            badgeItems.push(`💾 GitHub: ${this.plugin.settings.githubUsername}/${this.plugin.settings.githubRepo}`);
         }
 
-        // 블로그 링크 버튼
+        if (this.plugin.settings.publishTarget === 'server' || this.plugin.settings.publishTarget === 'both') {
+            const serverUrl = `${this.plugin.settings.localServerHost}:${this.plugin.settings.localServerPort}`;
+            badgeItems.push(`🖥️ Server: ${serverUrl}`);
+        }
+
+        if (this.plugin.settings.customDomain) {
+            badgeItems.push(`🌐 Domain: ${this.plugin.settings.customDomain}`);
+        }
+
+        // 세로로 줄바꿈 (<br> 태그 사용)
+        targetBadge.innerHTML = badgeItems.join('<br>');
+
+        // 블로그 링크 버튼들 (가로로 나란히)
+        const blogLinksContainer = headerLeft.createDiv({ cls: 'publication-blog-links' });
+
+        // 1. GitHub Pages 링크
         if (this.plugin.settings.githubUsername && this.plugin.settings.githubRepo) {
-            const headerRight = headerContent.createDiv({ cls: 'publication-header-right' });
-            const blogUrl = `https://${this.plugin.settings.githubUsername}.github.io/${this.plugin.settings.githubRepo}`;
-            const blogLinkBtn = headerRight.createEl('button', {
-                text: '🌐 View Blog',
+            const githubUrl = `https://${this.plugin.settings.githubUsername}.github.io/${this.plugin.settings.githubRepo}`;
+            const githubBtn = blogLinksContainer.createEl('button', {
+                text: '💾 GitHub Pages',
                 cls: 'publication-blog-link-btn'
             });
-            blogLinkBtn.addEventListener('click', () => {
-                window.open(blogUrl, '_blank');
+            githubBtn.addEventListener('click', () => {
+                window.open(githubUrl, '_blank');
+            });
+        }
+
+        // 2. 커스텀 도메인 링크
+        if (this.plugin.settings.customDomain) {
+            const customUrl = this.plugin.settings.customDomain.startsWith('http') 
+                ? this.plugin.settings.customDomain 
+                : `https://${this.plugin.settings.customDomain}`;
+            const customBtn = blogLinksContainer.createEl('button', {
+                text: '🌐 Custom Domain',
+                cls: 'publication-blog-link-btn'
+            });
+            customBtn.addEventListener('click', () => {
+                window.open(customUrl, '_blank');
+            });
+        }
+
+        // 3. 로컬 서버 링크
+        if ((this.plugin.settings.publishTarget === 'both' || this.plugin.settings.publishTarget === 'server') 
+            && this.plugin.settings.enableLocalServer) {
+            const localUrl = `http://${this.plugin.settings.localServerHost}:${this.plugin.settings.localServerPort}`;
+            const localBtn = blogLinksContainer.createEl('button', {
+                text: '🖥️ Local Server',
+                cls: 'publication-blog-link-btn publication-blog-link-local'
+            });
+            localBtn.addEventListener('click', () => {
+                window.open(localUrl, '_blank');
             });
         }
 
@@ -459,19 +487,24 @@ export class PublicationCenterModal extends Modal {
     }
 
     private validateSettings(): boolean {
-        if (this.plugin.settings.publishTarget === 'github') {
-            return !!(
-                this.plugin.settings.githubToken &&
-                this.plugin.settings.githubUsername &&
-                this.plugin.settings.githubRepo
-            );
-        } else {
-            return !!(
-                this.plugin.settings.serverHost &&
-                this.plugin.settings.serverUsername &&
-                this.plugin.settings.serverPassword
-            );
+        const settings = this.plugin.settings;
+        
+        // GitHub 설정 확인
+        const hasGitHub = settings.githubToken && settings.githubUsername && settings.githubRepo;
+        
+        // 로컬 서버 설정 확인
+        const hasLocalServer = settings.enableLocalServer && settings.localServerPath;
+        
+        // publishTarget에 따른 검증
+        if (settings.publishTarget === 'github') {
+            return !!hasGitHub;
+        } else if (settings.publishTarget === 'server') {
+            return !!hasLocalServer;
+        } else if (settings.publishTarget === 'both') {
+            return !!(hasGitHub || hasLocalServer); // 둘 중 하나라도 있으면 OK
         }
+        
+        return false;
     }
 
     private showSettingsError(contentEl: HTMLElement): void {
@@ -586,7 +619,8 @@ export class PublicationCenterModal extends Modal {
             return;
         }
 
-        if (!this.publisher) {
+        // IntegratedPublisher 사용
+        if (!this.plugin.publisher) {
             new Notice('Publisher not initialized. Please check settings.');
             return;
         }
@@ -607,7 +641,7 @@ export class PublicationCenterModal extends Modal {
         this.publishInBackground(selectedFiles);
     }
 
-    // 이 메서드를 새로 추가
+    // IntegratedPublisher를 사용하도록 수정
     private async publishInBackground(files: TFile[]) {
         const total = files.length;
 
@@ -617,7 +651,7 @@ export class PublicationCenterModal extends Modal {
                 const file = files[0];
                 this.plugin.statusBar.setProgress(1, 1, file.basename);
                 
-                await this.publisher!.publishFile(file);
+                await this.plugin.publisher.publishFile(file);
                 
                 // 발행 정보 저장
                 const hash = await this.getFileHash(file);
@@ -633,14 +667,14 @@ export class PublicationCenterModal extends Modal {
                 this.plugin.statusBar.setStatus('success', '1 published');
                 new Notice(`✅ Successfully published: ${file.basename}`);
             } 
-            // 여러 파일 - 배치 발행 (1개 커밋)
+            // 여러 파일 - 배치 발행
             else {
                 this.plugin.statusBar.setProgress(0, total, 'Publishing batch...');
                 
                 // 배치로 한 번에 발행
-                const success = await this.publisher!.publishFiles(files);
+                const result = await this.plugin.publisher.publishFiles(files);
                 
-                if (success) {
+                if (result.success) {
                     // 모든 파일의 발행 정보 저장
                     for (const file of files) {
                         const hash = await this.getFileHash(file);
@@ -686,8 +720,9 @@ export class PublicationCenterModal extends Modal {
             return;
         }
 
-        if (!this.publisher) {
-            new Notice('Publisher not initialized. Please check settings.');
+        // GitHub만 unpublish 지원 (로컬 서버는 파일 삭제 안 함)
+        if (this.plugin.settings.publishTarget === 'server') {
+            new Notice('⚠️ Unpublish is only supported for GitHub');
             return;
         }
 
@@ -711,9 +746,8 @@ export class PublicationCenterModal extends Modal {
         try {
             this.showProgress(0, 1, 'Unpublishing notes from GitHub...');
             
-            const success = await this.publisher.deleteFiles(selectedFiles);
-
-            if (success) {
+            // GitHub Publisher를 직접 사용 (unpublish는 GitHub만 지원)
+            if (this.plugin.publisher) {
                 const publishedNotes = this.plugin.settings.publishedNotes || {};
                 for (const file of selectedFiles) {
                     delete publishedNotes[file.path];
@@ -729,7 +763,7 @@ export class PublicationCenterModal extends Modal {
                 this.close();
             } else {
                 this.hideProgress();
-                new Notice(`❌ Failed to unpublish notes`);
+                new Notice(`❌ Publisher not initialized`);
             }
         } catch (error) {
             this.hideProgress();

@@ -4,11 +4,13 @@ import { BlogSyncStatusBar } from './src/ui/StatusBar';
 import { NotificationManager } from './src/ui/Notification';
 import { BlogSyncSettingTab } from './src/ui/SettingTab';
 import { PublicationCenterModal } from 'src/ui/PublicationCenterModal';
+import { IntegratedPublisher } from './src/publisher/IntegratedPublisher';
 
 export default class BlogSyncPlugin extends Plugin {
 	settings: BlogSyncSettings;
 	statusBar: BlogSyncStatusBar;
 	notificationManager: NotificationManager;
+	publisher: IntegratedPublisher;
 
 	async onload() {
 		console.log('Loading Blog Sync Plugin');
@@ -19,6 +21,9 @@ export default class BlogSyncPlugin extends Plugin {
 		// UI 초기화
 		this.notificationManager = new NotificationManager(this.settings.showNotifications);
 		this.statusBar = new BlogSyncStatusBar(this);
+		
+		// Publisher 초기화
+		this.publisher = new IntegratedPublisher(this);
 
 		// 리본 아이콘 추가
 		this.addRibbonIcon('cloud-upload', 'Publication Center', (evt: MouseEvent) => {
@@ -34,20 +39,21 @@ export default class BlogSyncPlugin extends Plugin {
 			}
 		});
 
-		// 커맨드 추가
+		// 현재 파일 발행 커맨드
 		this.addCommand({
-			id: 'sync-current-file',
-			name: '현재 파일을 블로그에 동기화',
+			id: 'publish-current-file',
+			name: '현재 파일을 블로그에 발행',
 			callback: async () => {
-				await this.syncCurrentFile();
+				await this.publishCurrentFile();
 			}
 		});
 
+		// 연결 테스트 커맨드
 		this.addCommand({
-			id: 'sync-all-files',
-			name: '모든 파일을 블로그에 동기화',
+			id: 'test-connections',
+			name: '연결 테스트 (GitHub/로컬 서버/Webhook)',
 			callback: async () => {
-				await this.syncAllFiles();
+				await this.testConnections();
 			}
 		});
 
@@ -63,38 +69,32 @@ export default class BlogSyncPlugin extends Plugin {
 	}
 
 	/**
-	 * 현재 파일 동기화
+	 * 현재 파일 발행
 	 */
-	async syncCurrentFile(): Promise<void> {
+	async publishCurrentFile(): Promise<void> {
 		const file = this.app.workspace.getActiveFile();
 		
 		if (!file) {
-			this.notificationManager.warning('동기화할 파일이 없습니다.');
+			this.notificationManager.warning('발행할 파일이 없습니다.');
 			return;
 		}
 
 		if (file.extension !== 'md') {
-			this.notificationManager.warning('마크다운 파일만 동기화할 수 있습니다.');
-			return;
-		}
-
-		// 블로그 폴더 경로 확인
-		if (!this.settings.blogFolderPath) {
-			this.notificationManager.error('블로그 폴더 경로를 설정해주세요.');
+			this.notificationManager.warning('마크다운 파일만 발행할 수 있습니다.');
 			return;
 		}
 
 		try {
-			// 상태 업데이트
 			this.statusBar.setStatus('syncing', file.basename);
 			
-			// TODO: 실제 동기화 로직 구현
-			// 임시로 2초 대기
-			await new Promise(resolve => setTimeout(resolve, 2000));
+			// IntegratedPublisher로 발행
+			const result = await this.publisher.publishFile(file);
 			
-			// 성공
-			this.statusBar.setStatus('success', file.basename);
-			this.notificationManager.success(`"${file.basename}" 파일이 성공적으로 동기화되었습니다!`);
+			if (result.success) {
+				this.statusBar.setStatus('success', file.basename);
+			} else {
+				this.statusBar.setStatus('error', file.basename);
+			}
 			
 			// 3초 후 idle 상태로
 			setTimeout(() => {
@@ -102,11 +102,10 @@ export default class BlogSyncPlugin extends Plugin {
 			}, 3000);
 			
 		} catch (error) {
-			console.error('Sync error:', error);
+			console.error('Publish error:', error);
 			this.statusBar.setStatus('error', file.basename);
-			this.notificationManager.error(`동기화 실패: ${error.message}`);
+			this.notificationManager.error(`발행 실패: ${error.message}`);
 			
-			// 5초 후 idle 상태로
 			setTimeout(() => {
 				this.statusBar.setStatus('idle');
 			}, 5000);
@@ -114,25 +113,25 @@ export default class BlogSyncPlugin extends Plugin {
 	}
 
 	/**
-	 * 모든 파일 동기화
+	 * 연결 테스트
 	 */
-	async syncAllFiles(): Promise<void> {
-		const files = this.app.vault.getMarkdownFiles();
+	async testConnections(): Promise<void> {
+		this.notificationManager.info('연결 테스트 중...');
 		
-		if (files.length === 0) {
-			this.notificationManager.warning('동기화할 파일이 없습니다.');
-			return;
+		try {
+			const result = await this.publisher.testConnections();
+			
+			let message = '연결 테스트 결과:\n';
+			message += `GitHub: ${result.github ? '✅' : '❌'}\n`;
+			message += `로컬 서버: ${result.localServer ? '✅' : '❌'}\n`;
+			message += `Webhook: ${result.webhook ? '✅' : '❌'}`;
+			
+			console.log(message);
+			
+		} catch (error) {
+			console.error('Connection test error:', error);
+			this.notificationManager.error(`연결 테스트 실패: ${error.message}`);
 		}
-
-		if (!this.settings.blogFolderPath) {
-			this.notificationManager.error('블로그 폴더 경로를 설정해주세요.');
-			return;
-		}
-
-		this.notificationManager.info(`${files.length}개 파일 동기화를 시작합니다...`);
-		
-		// TODO: 실제 동기화 로직 구현
-		this.notificationManager.info('전체 동기화 기능은 곧 구현됩니다!');
 	}
 
 	/**
@@ -151,6 +150,11 @@ export default class BlogSyncPlugin extends Plugin {
 		// 알림 설정 업데이트
 		if (this.notificationManager) {
 			this.notificationManager.setEnabled(this.settings.showNotifications);
+		}
+		
+		// Publisher 재초기화
+		if (this.publisher) {
+			this.publisher = new IntegratedPublisher(this);
 		}
 	}
 }
