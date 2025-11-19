@@ -42,14 +42,14 @@ jobs:
             echo "Renamed: $file -> $new"
           done
 
-      - name: Transform image links for web (temporary)
-        run: |
-          echo "=== Before transformation ==="
-          grep -r "src/site/img" src/site/notes/ | head -5 || echo "No matches found"
-          echo ""
-          find src/site/notes -name "*.md" -type f -exec sed -i 's|/src/site/|/|g' {} +
-          echo "=== After transformation ==="
-          grep -r "/img/user" src/site/notes/ | head -5 || echo "No matches found"
+      # - name: Transform image links for web (temporary)
+      #   run: |
+      #     echo "=== Before transformation ==="
+      #     grep -r "src/site/img" src/site/notes/ | head -5 || echo "No matches found"
+      #     echo ""
+      #     find src/site/notes -name "*.md" -type f -exec sed -i 's|/src/site/|/|g' {} +
+      #     echo "=== After transformation ==="
+      #     grep -r "/img/user" src/site/notes/ | head -5 || echo "No matches found"
 
       - name: Build Quartz
         run: npx quartz build
