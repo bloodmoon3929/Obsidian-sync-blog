@@ -62,9 +62,6 @@ jobs:
           echo "=== Checking for specific file ==="
           find public/img/user/첨부파일/ -name "*2주차*" || echo "File not found"
 
-      - name: Copy robots.txt to public
-        run: cp robots.txt ./public/robots.txt
-
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
