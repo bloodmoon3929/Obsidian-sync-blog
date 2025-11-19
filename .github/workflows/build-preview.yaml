@@ -33,8 +33,10 @@ jobs:
       - name: Check types and style
         run: npm run check
 
+      # ❌ 기존: -d docs
+      # ✅ 수정: -d public
       - name: Build Quartz
-        run: npx quartz build -d docs -v
+        run: npx quartz build -d public -v
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v5
