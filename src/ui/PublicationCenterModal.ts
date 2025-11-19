@@ -720,23 +720,15 @@ export class PublicationCenterModal extends Modal {
             return;
         }
 
-        // GitHub만 unpublish 지원 (로컬 서버는 파일 삭제 안 함)
-        if (this.plugin.settings.publishTarget === 'server') {
-            new Notice('⚠️ Unpublish is only supported for GitHub');
-            return;
-        }
-
-        const selectedFiles: TFile[] = [];
+        // 삭제할 파일 경로 리스트
+        const pathsToDelete: string[] = [];
         for (const path of this.selectedNotes) {
-            const file = this.app.vault.getAbstractFileByPath(path);
-            if (file instanceof TFile) {
-                selectedFiles.push(file);
-            }
+            pathsToDelete.push(path);
         }
 
         const confirmed = await this.showConfirmDialog(
             'Unpublish Notes',
-            `Are you sure you want to unpublish ${selectedFiles.length} note(s) from GitHub?`
+            `Are you sure you want to unpublish ${pathsToDelete.length} note(s)?`
         );
 
         if (!confirmed) {
@@ -744,26 +736,97 @@ export class PublicationCenterModal extends Modal {
         }
 
         try {
-            this.showProgress(0, 1, 'Unpublishing notes from GitHub...');
+            this.showProgress(0, 1, 'Unpublishing notes...');
             
-            // GitHub Publisher를 직접 사용 (unpublish는 GitHub만 지원)
-            if (this.plugin.publisher) {
+            let githubSuccess = false;
+            let localServerSuccess = false;
+
+            // 1. GitHub에서 삭제
+            if (this.plugin.settings.publishTarget === 'github' || this.plugin.settings.publishTarget === 'both') {
+                try {
+                    const { GitHubPublisher } = await import('../publisher/GitHubPublisher');
+                    const githubPublisher = new GitHubPublisher(this.plugin, {
+                        githubToken: this.plugin.settings.githubToken,
+                        githubUsername: this.plugin.settings.githubUsername,
+                        githubRepo: this.plugin.settings.githubRepo,
+                        githubBranch: this.plugin.settings.githubBranch,
+                        publicBasePath: this.plugin.settings.publicBasePath,
+                        blogContentPath: this.plugin.settings.blogContentPath,
+                        blogAssetsPath: this.plugin.settings.blogAssetsPath
+                    });
+
+                    const filesToDelete: any[] = [];
+                    for (const path of pathsToDelete) {
+                        const file = this.app.vault.getAbstractFileByPath(path);
+                        if (file instanceof TFile) {
+                            filesToDelete.push(file);
+                        } else {
+                            filesToDelete.push({
+                                path: path,
+                                basename: path.split('/').pop()?.replace('.md', '') || path,
+                                name: path.split('/').pop() || path
+                            });
+                        }
+                    }
+
+                    githubSuccess = await githubPublisher.deleteFiles(filesToDelete);
+                    if (githubSuccess) {
+                        new Notice('✅ GitHub에서 삭제 완료');
+                    }
+                } catch (error) {
+                    console.error('GitHub delete error:', error);
+                    new Notice(`⚠️ GitHub 삭제 실패: ${error.message}`);
+                }
+            }
+
+            // 2. 로컬 서버에서 삭제
+            if (this.plugin.settings.publishTarget === 'server' || this.plugin.settings.publishTarget === 'both') {
+                if (this.plugin.settings.enableLocalServer) {
+                    try {
+                        const { LocalServerPublisher } = await import('../publisher/LocalServerPublisher');
+                        const localPublisher = new LocalServerPublisher(
+                            this.plugin.settings.localServerPath,
+                            this.plugin.settings.localServerNotesPath,
+                            this.plugin.settings.localServerAssetsPath
+                        );
+
+                        const filesToDelete = pathsToDelete.map(path => ({
+                            path: path,
+                            isAsset: false
+                        }));
+
+                        const result = await localPublisher.deleteFiles(filesToDelete);
+                        localServerSuccess = result.success;
+                        
+                        if (localServerSuccess) {
+                            new Notice('✅ 로컬 서버에서 삭제 완료');
+                        }
+                    } catch (error) {
+                        console.error('Local server delete error:', error);
+                        new Notice(`⚠️ 로컬 서버 삭제 실패: ${error.message}`);
+                    }
+                }
+            }
+
+            // 3. 어느 하나라도 성공하면 로컬 설정에서 제거
+            if (githubSuccess || localServerSuccess) {
                 const publishedNotes = this.plugin.settings.publishedNotes || {};
-                for (const file of selectedFiles) {
-                    delete publishedNotes[file.path];
+                for (const path of pathsToDelete) {
+                    delete publishedNotes[path];
                 }
                 this.plugin.settings.publishedNotes = publishedNotes;
                 await this.plugin.saveSettings();
 
                 this.hideProgress();
-                new Notice(`✅ Successfully unpublished ${selectedFiles.length} notes!`);
+                new Notice(`✅ Successfully unpublished ${pathsToDelete.length} notes!`);
                 
+                // UI 새로고침
                 await this.analyzeNotes();
                 this.selectedNotes.clear();
                 this.close();
             } else {
                 this.hideProgress();
-                new Notice(`❌ Publisher not initialized`);
+                new Notice(`❌ Failed to unpublish notes`);
             }
         } catch (error) {
             this.hideProgress();
@@ -771,6 +834,7 @@ export class PublicationCenterModal extends Modal {
             new Notice(`❌ Failed to unpublish: ${error.message}`);
         }
     }
+
 
     private showConfirmDialog(title: string, message: string): Promise<boolean> {
         return new Promise((resolve) => {

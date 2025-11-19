@@ -110,7 +110,7 @@ export class LocalServerPublisher {
     }
 
     /**
-     * 파일 삭제
+     * 단일 파일 삭제
      */
     async deleteFile(relativePath: string, isAsset: boolean = false): Promise<boolean> {
         try {
@@ -128,5 +128,39 @@ export class LocalServerPublisher {
             console.error('File delete error:', error);
             return false;
         }
+    }
+
+    /**
+     * 여러 파일 삭제
+     */
+    async deleteFiles(files: { path: string; isAsset?: boolean }[]): Promise<LocalServerPublishResult> {
+        const errors: string[] = [];
+        let filesDeleted = 0;
+
+        // 경로 검증
+        const isValid = await this.validatePaths();
+        if (!isValid) {
+            return {
+                success: false,
+                filesPublished: 0,
+                errors: ['서버 경로 접근 불가']
+            };
+        }
+
+        // 파일 삭제
+        for (const file of files) {
+            const success = await this.deleteFile(file.path, file.isAsset || false);
+            if (success) {
+                filesDeleted++;
+            } else {
+                errors.push(file.path);
+            }
+        }
+
+        return {
+            success: errors.length === 0,
+            filesPublished: filesDeleted,
+            errors: errors.length > 0 ? errors : undefined
+        };
     }
 }
