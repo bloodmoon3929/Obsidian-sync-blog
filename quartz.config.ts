@@ -16,7 +16,7 @@ const config: QuartzConfig = {
       provider: "plausible",
     },
     locale: "ko-KR",
-    baseUrl: "bloodmoon3929.github.io/Obsidian-sync-blog",
+    baseUrl: "https://bloodmoon3929.github.io/Obsidian-sync-blog/",
     ignorePatterns: ["private", "templates", ".obsidian"],
     defaultDateType: "modified",
     theme: {
