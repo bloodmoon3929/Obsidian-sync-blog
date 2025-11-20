@@ -89,6 +89,32 @@ export class BlogSyncSettingTab extends PluginSettingTab {
             this.plugin.settings.publishTarget === 'both') {
             this.displayServerSettings(containerEl);
         }
+
+
+        containerEl.createEl('h3', { text: '📘 Documentation' });
+
+        const docSection = containerEl.createDiv();
+        docSection.style.display = 'grid';
+        docSection.style.gridTemplateColumns = '1fr 1fr';
+        docSection.style.gap = '10px';
+
+        // Helper function to add a link button
+        function addDocButton(name: string, url: string) {
+            const btn = docSection.createEl('button', { text: name });
+            btn.style.padding = '8px';
+            btn.style.borderRadius = '6px';
+            btn.style.cursor = 'pointer';
+            btn.style.border = '1px solid var(--background-modifier-border)';
+            btn.style.backgroundColor = 'var(--background-secondary)';
+            btn.onclick = () => window.open(url, '_blank');
+        }
+
+        // Buttons
+        addDocButton('📄 Plugin Home', 'https://bloodmoon3929.github.io/Obsidian-sync-blog/');
+        addDocButton('⚙️ GitHub Action', 'https://bloodmoon3929.github.io/Obsidian-sync-blog/Github_Action');
+        addDocButton('🔑 GitHub Token 설정', 'https://bloodmoon3929.github.io/Obsidian-sync-blog/GitToken');
+        addDocButton('🖥️ Local Server 설정', 'https://bloodmoon3929.github.io/Obsidian-sync-blog/localServer');
+        addDocButton('📚 Quartz 설정', 'https://bloodmoon3929.github.io/Obsidian-sync-blog/Quartz');
     }
 
     /**

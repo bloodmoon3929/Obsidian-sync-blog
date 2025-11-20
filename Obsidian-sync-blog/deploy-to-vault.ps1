@@ -1,7 +1,7 @@
 # Obsidian Plugin Auto Deploy Script
 # 파일 변경 시 자동으로 Vault에 복사
 
-$SOURCE_DIR = "C:\Users\gnbup\Desktop\Claude\wootech\Obsidian-sync-blog"
+$SOURCE_DIR = "C:\Users\gnbup\Desktop\Claude\wootech\Obsidian-sync-blog\Obsidian-sync-blog"
 $VAULT_PLUGIN_DIR = "C:\Users\gnbup\OneDrive\Obsidian\.obsidian\plugins\obsidian-sync-blog"
 
 Write-Host "=== Deploying Plugin to Obsidian ===" -ForegroundColor Cyan
